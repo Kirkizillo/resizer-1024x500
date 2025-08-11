@@ -1,0 +1,260 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Resizer 1024×500 (fondo + logo)</title>
+  <style>
+    :root{ --bg:#0b0f14; --panel:#0f1720; --edge:#334155; --text:#e5eef7; --muted:#93a4b8; --guide:#ff4d4d; --safe:#ffd166; }
+    *{box-sizing:border-box}
+    body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 system-ui,-apple-system,Segoe UI,Roboto}
+    header{padding:12px 16px;border-bottom:1px solid #1f2937;background:linear-gradient(180deg,#0f1720,#0b0f14)}
+    h1{margin:0;font-size:16px;font-weight:600}
+    main{display:grid;place-items:center;gap:16px;padding:20px}
+    .frame{display:inline-block;padding:18px;border-radius:12px;background:var(--panel);box-shadow:0 12px 30px #00000055;max-width:98vw}
+    .canvas-wrap{position:relative;display:inline-block}
+    canvas{display:block;width:1024px;height:500px;background-image:
+      linear-gradient(45deg,#1b2430 25%,transparent 25%),
+      linear-gradient(-45deg,#1b2430 25%,transparent 25%),
+      linear-gradient(45deg,transparent 75%,#1b2430 75%),
+      linear-gradient(-45deg,transparent 75%,#1b2430 75%);
+      background-size:22px 22px; background-position:0 0,0 11px,11px -11px,-11px 0;
+      outline:2px solid var(--edge); outline-offset:8px; border-radius:6px; cursor:grab;
+    }
+    canvas:active{cursor:grabbing}
+    .toolbar{display:flex;gap:10px;align-items:center;justify-content:center;margin:12px 0;flex-wrap:wrap}
+    label.file{display:inline-flex;gap:.5rem;align-items:center;border:1px dashed #3a4b61;padding:.55rem .8rem;border-radius:.6rem;cursor:pointer;color:var(--muted)}
+    input[type="file"]{display:none}
+    button, select, input[type="number"], input[type="range"]{appearance:none;border:1px solid #253445;background:#0e1520;color:var(--text);padding:.55rem .8rem;border-radius:.6rem;cursor:pointer}
+    button:hover, select:hover, input[type="number"]:hover{border-color:#35506d;box-shadow:0 0 0 3px #1e293b66}
+    .muted{color:var(--muted);font-size:12px;margin-top:8px;text-align:center}
+    .toggle{display:inline-flex;align-items:center;gap:6px;color:var(--muted);font-size:13px}
+    .group{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+    .sp{width:64px}
+    .seg{display:inline-flex;border:1px solid #253445;border-radius:.6rem;overflow:hidden}
+    .seg button{border:0;padding:.45rem .7rem;background:#0a1019}
+    .seg button.active{background:#1d2a3b;font-weight:600}
+  </style>
+</head>
+<body>
+  <header><h1>Resizer 1024×500 · Fondo + Logo</h1></header>
+  <main>
+    <div class="frame">
+      <div class="toolbar group">
+        <label class="file" for="bgInput">📁 Cargar fondo</label>
+        <input id="bgInput" type="file" accept="image/*" />
+        <label class="file" for="logoInput">🖼️ Cargar logo</label>
+        <input id="logoInput" type="file" accept="image/*" />
+        <div class="seg" role="tablist" aria-label="Capa activa">
+          <button id="tabBg" class="active" title="Editar fondo">Fondo</button>
+          <button id="tabLogo" title="Editar logo">Logo</button>
+        </div>
+        <button id="fitCover">Ajustar (cubrir)</button>
+        <button id="centerBtn">Centrar</button>
+        <button id="resetBtn">Reset</button>
+      </div>
+
+      <div class="toolbar group">
+        <label class="toggle"><input type="checkbox" id="toggleGuides" checked> Guías (tercios)</label>
+        <label class="toggle"><input type="checkbox" id="toggleSafe" checked> Área texto (solo preview)</label>
+        <span class="muted">W</span><input id="safeW" type="number" class="sp" min="40" max="600" step="10" value="280" />
+        <span class="muted">H</span><input id="safeH" type="number" class="sp" min="30" max="300" step="5" value="80" />
+        <span class="muted">Margen</span><input id="safeM" type="number" class="sp" min="0" max="100" step="2" value="16" />
+      </div>
+
+      <div class="toolbar group">
+        <select id="format">
+          <option value="png">PNG (sin pérdida)</option>
+          <option value="jpeg" selected>JPEG (con pérdida)</option>
+          <option value="webp">WEBP</option>
+        </select>
+        <span class="muted">Calidad</span>
+        <input id="quality" type="number" class="sp" min="0.5" max="1" step="0.05" value="0.95" />
+        <button id="downloadBtn">Exportar 1024×500</button>
+      </div>
+
+      <div class="canvas-wrap">
+        <canvas id="canvas" width="1024" height="500"></canvas>
+      </div>
+      <div class="muted" id="info">Capa activa: <strong id="which">Fondo</strong> · rueda para zoom, arrastra para mover. Atajos: <kbd>+</kbd>/<kbd>-</kbd>, flechas, <kbd>R</kbd>. Con logo activo, el zoom solo afecta al logo.</div>
+    </div>
+  </main>
+
+<script>
+const dpr = Math.max(1, window.devicePixelRatio || 1);
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
+const cssW = 1024, cssH = 500;
+canvas.style.width = cssW + 'px'; canvas.style.height = cssH + 'px';
+canvas.width = Math.round(cssW * dpr); canvas.height = Math.round(cssH * dpr);
+ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+// Estado
+let bgImg = null, logoImg = null;
+let bg = { x:0, y:0, scale:1 };
+let logo = { x:16, y:16, scale:0.3, opacity:1 };
+let active = 'bg'; // 'bg' | 'logo'
+let dragging = false, startX=0, startY=0;
+
+// UI
+const el = (id)=>document.getElementById(id);
+const bgInput = el('bgInput');
+const logoInput = el('logoInput');
+const tabBg = el('tabBg');
+const tabLogo = el('tabLogo');
+const which = el('which');
+const toggleGuides = el('toggleGuides');
+const toggleSafe = el('toggleSafe');
+const safeW = el('safeW');
+const safeH = el('safeH');
+const safeM = el('safeM');
+const formatSel = el('format');
+const qualityInput = el('quality');
+
+function setActive(name){
+  active = name; which.textContent = name === 'bg' ? 'Fondo' : 'Logo';
+  tabBg.classList.toggle('active', name==='bg');
+  tabLogo.classList.toggle('active', name==='logo');
+}
+
+tabBg.onclick = ()=> setActive('bg');
+tabLogo.onclick = ()=> setActive('logo');
+
+bgInput.addEventListener('change', e=>{ const f = e.target.files?.[0]; if(!f) return; const url = URL.createObjectURL(f); const img = new Image(); img.onload=()=>{ bgImg = img; fitCover(); URL.revokeObjectURL(url); draw(); }; img.src=url; });
+logoInput.addEventListener('change', e=>{ const f = e.target.files?.[0]; if(!f) return; const url = URL.createObjectURL(f); const img = new Image(); img.onload=()=>{ logoImg = img; // tamaño inicial ~20% del alto del lienzo
+  const targetH = cssH * 0.2; logo.scale = targetH / img.naturalHeight; logo.x = +safeM.value; logo.y = +safeM.value; URL.revokeObjectURL(url); draw(); }; img.src=url; });
+
+function draw(){
+  ctx.clearRect(0,0,cssW,cssH);
+  // FONDO
+  if(bgImg){
+    const iw = bgImg.naturalWidth * bg.scale; const ih = bgImg.naturalHeight * bg.scale;
+    const x = (cssW - iw)/2 + bg.x; const y = (cssH - ih)/2 + bg.y;
+    ctx.drawImage(bgImg, x, y, iw, ih);
+  }
+  // LOGO (encima)
+  if(logoImg){
+    ctx.save(); ctx.globalAlpha = logo.opacity;
+    const lw = logoImg.naturalWidth * logo.scale; const lh = logoImg.naturalHeight * logo.scale;
+    ctx.drawImage(logoImg, logo.x, logo.y, lw, lh);
+    ctx.restore();
+  }
+  // Overlays (solo preview)
+  if(toggleGuides.checked) drawGuides(ctx);
+  if(toggleSafe.checked) drawSafeArea(ctx);
+}
+
+function drawGuides(context){
+  context.save();
+  context.strokeStyle = getCss('--guide') || '#ff4d4d';
+  context.lineWidth = 1; context.setLineDash([6,4]);
+  context.beginPath();
+  context.moveTo(cssW/3,0); context.lineTo(cssW/3,cssH);
+  context.moveTo(2*cssW/3,0); context.lineTo(2*cssW/3,cssH);
+  context.moveTo(0,cssH/3); context.lineTo(cssW,cssH/3);
+  context.moveTo(0,2*cssH/3); context.lineTo(cssW,2*cssH/3);
+  context.stroke(); context.restore();
+}
+
+function drawSafeArea(context){
+  const m = +safeM.value; const w = +safeW.value; const h = +safeH.value;
+  context.save();
+  context.strokeStyle = getCss('--safe') || '#ffd166';
+  context.fillStyle = 'rgba(255,209,102,0.08)';
+  context.lineWidth = 2; context.setLineDash([10,6]);
+  context.strokeRect(m, m, w, h);
+  context.fillRect(m, m, w, h);
+  // etiqueta
+  context.font = '12px system-ui, -apple-system, Segoe UI, Roboto';
+  context.fillStyle = '#ffe08a';
+  context.fillText('Área de texto', m+6, m+16);
+  context.restore();
+}
+
+function getCss(varName){ return getComputedStyle(document.documentElement).getPropertyValue(varName); }
+
+function fitCover(){
+  if(!bgImg) return; const rFrame = cssW/cssH; const rImg = bgImg.naturalWidth/bgImg.naturalHeight;
+  bg.scale = (rImg>rFrame) ? (cssH/bgImg.naturalHeight) : (cssW/bgImg.naturalWidth);
+  bg.x=0; bg.y=0; draw();
+}
+function center(){ if(active==='bg'){ bg.x=0; bg.y=0; } else { logo.x=(cssW - logoImg.naturalWidth*logo.scale)/2; logo.y=(cssH - logoImg.naturalHeight*logo.scale)/2; } draw(); }
+function reset(){ if(active==='bg'){ bg.scale=1; bg.x=0; bg.y=0; } else if(logoImg){ const targetH = cssH * 0.2; logo.scale = targetH / logoImg.naturalHeight; logo.x = +safeM.value; logo.y = +safeM.value; } draw(); }
+
+function zoomAt(clientX, clientY, factor){
+  const rect = canvas.getBoundingClientRect();
+  const cx = (clientX - rect.left) / rect.width * cssW;
+  const cy = (clientY - rect.top) / rect.height * cssH;
+  if(active==='bg'){
+    const prev = bg.scale; bg.scale *= factor; bg.x = cx - (cx - bg.x)*(bg.scale/prev); bg.y = cy - (cy - bg.y)*(bg.scale/prev);
+  } else if(active==='logo' && logoImg){
+    const lw = logoImg.naturalWidth*logo.scale; const lh = logoImg.naturalHeight*logo.scale;
+    const lx = logo.x + lw/2; const ly = logo.y + lh/2;
+    const prev = logo.scale; logo.scale *= factor; // mantener centro
+    const lw2 = logoImg.naturalWidth*logo.scale; const lh2 = logoImg.naturalHeight*logo.scale;
+    logo.x = lx - lw2/2; logo.y = ly - lh2/2;
+  }
+  draw();
+}
+
+// Reescalado progresivo (para nitidez) - devuelve un canvas fuente reducido en pasos
+function progressiveScale(imgEl, targetW, targetH){
+  let ow = imgEl.naturalWidth, oh = imgEl.naturalHeight;
+  let oc = document.createElement('canvas'); oc.width = ow; oc.height = oh; let octx = oc.getContext('2d');
+  octx.imageSmoothingEnabled = true; octx.imageSmoothingQuality = 'high'; octx.drawImage(imgEl,0,0);
+  while (oc.width*0.5 > targetW || oc.height*0.5 > targetH){
+    const oc2 = document.createElement('canvas');
+    oc2.width = Math.max(targetW, Math.floor(oc.width*0.5));
+    oc2.height = Math.max(targetH, Math.floor(oc.height*0.5));
+    const o2 = oc2.getContext('2d'); o2.imageSmoothingEnabled = true; o2.imageSmoothingQuality='high';
+    o2.drawImage(oc, 0, 0, oc.width, oc.height, 0, 0, oc2.width, oc2.height);
+    oc = oc2;
+  }
+  return oc;
+}
+
+function exportImage(){
+  const out = document.createElement('canvas'); out.width = cssW; out.height = cssH; const octx = out.getContext('2d');
+  octx.imageSmoothingEnabled = true; octx.imageSmoothingQuality = 'high';
+  // FONDO
+  if(bgImg){
+    const iw = bgImg.naturalWidth*bg.scale, ih = bgImg.naturalHeight*bg.scale; const x=(cssW-iw)/2+bg.x, y=(cssH-ih)/2+bg.y;
+    const sourceBg = progressiveScale(bgImg, Math.min(iw, cssW*2), Math.min(ih, cssH*2));
+    octx.drawImage(sourceBg, x, y, iw, ih);
+  }
+  // LOGO
+  if(logoImg){
+    octx.save(); octx.globalAlpha = logo.opacity;
+    const lw = logoImg.naturalWidth*logo.scale, lh = logoImg.naturalHeight*logo.scale;
+    const sourceLogo = progressiveScale(logoImg, Math.min(lw, cssW), Math.min(lh, cssH));
+    octx.drawImage(sourceLogo, logo.x, logo.y, lw, lh);
+    octx.restore();
+  }
+  // NOTA: guías y área de texto NO se exportan
+  const fmt = formatSel.value; const mime = fmt==='png'?'image/png':(fmt==='jpeg'?'image/jpeg':'image/webp');
+  const q = Math.max(0.5, Math.min(1, parseFloat(qualityInput.value||'0.95')));
+  out.toBlob(b=>{ const url = URL.createObjectURL(b); const a=document.createElement('a'); const ext = fmt==='jpeg'?'jpg':fmt; a.href=url; a.download=`export_1024x500.${ext}`; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url); }, mime, fmt==='png'?1:q);
+}
+
+// Interacción
+canvas.addEventListener('mousedown', e=>{ dragging=true; startX=e.clientX; startY=e.clientY; });
+window.addEventListener('mouseup', ()=> dragging=false);
+window.addEventListener('mousemove', e=>{
+  if(!dragging) return; const speed = e.shiftKey?0.5:1; const dx=(e.clientX-startX)*speed; const dy=(e.clientY-startY)*speed; startX=e.clientX; startY=e.clientY;
+  if(active==='bg'){ bg.x += dx; bg.y += dy; } else { logo.x += dx; logo.y += dy; }
+  draw();
+});
+canvas.addEventListener('wheel', e=>{ e.preventDefault(); zoomAt(e.clientX, e.clientY, e.deltaY<0?1.1:0.9); }, {passive:false});
+
+toggleGuides.onchange = draw; toggleSafe.onchange = draw; safeW.onchange = draw; safeH.onchange = draw; safeM.onchange = draw;
+
+document.getElementById('fitCover').onclick = fitCover;
+document.getElementById('centerBtn').onclick = center;
+document.getElementById('resetBtn').onclick = reset;
+document.getElementById('downloadBtn').onclick = exportImage;
+
+draw();
+</script>
+</body>
+</html>
