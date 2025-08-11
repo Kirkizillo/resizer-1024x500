@@ -25,8 +25,9 @@
     .toolbar{display:flex;gap:10px;align-items:center;justify-content:center;margin:12px 0;flex-wrap:wrap}
     label.file{display:inline-flex;gap:.5rem;align-items:center;border:1px dashed #3a4b61;padding:.55rem .8rem;border-radius:.6rem;cursor:pointer;color:var(--muted)}
     input[type="file"]{display:none}
-    button, select, input[type="number"], input[type="range"]{appearance:none;border:1px solid #253445;background:#0e1520;color:var(--text);padding:.55rem .8rem;border-radius:.6rem;cursor:pointer}
-    button:hover, select:hover, input[type="number"]:hover{border-color:#35506d;box-shadow:0 0 0 3px #1e293b66}
+    button, select, input[type="number"], input[type="range"], input[type="color"]{appearance:none;border:1px solid #253445;background:#0e1520;color:var(--text);padding:.55rem .8rem;border-radius:.6rem;cursor:pointer}
+    button:hover, select:hover, input[type="number"]:hover, input[type="color"]:hover{border-color:#35506d;box-shadow:0 0 0 3px #1e293b66}
+    input[type="color"]{width:44px;height:34px;padding:0}
     .muted{color:var(--muted);font-size:12px;margin-top:8px;text-align:center}
     .toggle{display:inline-flex;align-items:center;gap:6px;color:var(--muted);font-size:13px}
     .group{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
@@ -70,6 +71,17 @@
         <button id="downloadBtn">Exportar 1024×500</button>
       </div>
 
+      <div class="toolbar group">
+        <span class="muted">Fondo abstracto</span>
+        <input type="color" id="bgColor" value="#4f46e5" title="Color base" />
+        <select id="bgStyle">
+          <option value="soft">Degradado suave</option>
+          <option value="waves">Ondas</option>
+          <option value="noise">Ruido suave</option>
+        </select>
+        <button id="genBgBtn">Generar fondo</button>
+      </div>
+
       <div class="canvas-wrap">
         <canvas id="canvas" width="1024" height="500"></canvas>
       </div>
@@ -104,6 +116,9 @@ const toggleSafe = el('toggleSafe');
 const formatSel = el('format');
 const qualityInput = el('quality');
 const downloadBtn = el('downloadBtn');
+const genBgBtn = el('genBgBtn');
+const bgColor = el('bgColor');
+const bgStyle = el('bgStyle');
 
 function setActive(name){
   active = name; which.textContent = name === 'bg' ? 'Fondo' : 'Logo';
@@ -116,6 +131,10 @@ tabLogo.onclick = ()=> setActive('logo');
 
 bgInput.addEventListener('change', e=>{ const f = e.target.files?.[0]; if(!f) return; const url = URL.createObjectURL(f); const img = new Image(); img.onload=()=>{ bgImg = img; fitCover(); URL.revokeObjectURL(url); setActive('bg'); draw(); }; img.src=url; });
 logoInput.addEventListener('change', e=>{ const f = e.target.files?.[0]; if(!f) return; const url = URL.createObjectURL(f); const img = new Image(); img.onload=()=>{ logoImg = img; const targetH = cssH * 0.2; logo.scale = targetH / img.naturalHeight; logo.x = 16; logo.y = 16; URL.revokeObjectURL(url); setActive('logo'); draw(); }; img.src=url; });
+
+genBgBtn.addEventListener('click', ()=>{
+  generateAbstract(bgStyle.value, bgColor.value);
+});
 
 function draw(){
   ctx.clearRect(0,0,cssW,cssH);
@@ -202,6 +221,127 @@ function progressiveScale(imgEl, targetW, targetH){
   }
   return oc;
 }
+
+function exportImage(){
+  const out = document.createElement('canvas'); out.width = cssW; out.height = cssH; const octx = out.getContext('2d');
+  octx.imageSmoothingEnabled = true; octx.imageSmoothingQuality = 'high';
+  if(bgImg){
+    const iw = bgImg.naturalWidth*bg.scale, ih = bgImg.naturalHeight*bg.scale; const x=(cssW-iw)/2+bg.x, y=(cssH-ih)/2+bg.y;
+    const sourceBg = progressiveScale(bgImg, Math.min(iw, cssW*2), Math.min(ih, cssH*2));
+    octx.drawImage(sourceBg, x, y, iw, ih);
+  }
+  if(logoImg){
+    octx.save(); octx.globalAlpha = logo.opacity;
+    const lw = logoImg.naturalWidth*logo.scale, lh = logoImg.naturalHeight*logo.scale;
+    const sourceLogo = progressiveScale(logoImg, Math.min(lw, cssW), Math.min(lh, cssH));
+    octx.drawImage(sourceLogo, logo.x, logo.y, lw, lh);
+    octx.restore();
+  }
+  const fmt = formatSel.value; const mime = fmt==='png'?'image/png':(fmt==='jpeg'?'image/jpeg':'image/webp');
+  const q = Math.max(0.5, Math.min(1, parseFloat(qualityInput.value||'0.95')));
+  out.toBlob(b=>{ const url = URL.createObjectURL(b); const a=document.createElement('a'); const ext = fmt==='jpeg'?'jpg':fmt; a.href=url; a.download=`export_1024x500.${ext}`; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url); }, mime, fmt==='png'?1:q);
+}
+
+// === FONDOS ABSTRACTOS ===
+function generateAbstract(style, hex){
+  const c = document.createElement('canvas'); c.width = cssW; c.height = cssH; const g = c.getContext('2d');
+  g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'high';
+  const base = hexToRgb(hex);
+  const light = adjust(base, 0.18); // más claro
+  const dark  = adjust(base, -0.22); // más oscuro
+
+  if(style === 'soft'){
+    // Degradado diagonal + radial tenue
+    const lg = g.createLinearGradient(0,0, cssW, cssH);
+    lg.addColorStop(0, rgbStr(light));
+    lg.addColorStop(1, rgbStr(dark));
+    g.fillStyle = lg; g.fillRect(0,0,cssW,cssH);
+    const rg = g.createRadialGradient(cssW*0.7, cssH*0.3, 50, cssW*0.7, cssH*0.3, Math.max(cssW,cssH));
+    rg.addColorStop(0, 'rgba(255,255,255,0.15)');
+    rg.addColorStop(1, 'rgba(255,255,255,0)');
+    g.fillStyle = rg; g.fillRect(0,0,cssW,cssH);
+  }
+  else if(style === 'waves'){
+    // Fondo base
+    const lg = g.createLinearGradient(0,0, 0, cssH);
+    lg.addColorStop(0, rgbStr(light));
+    lg.addColorStop(1, rgbStr(dark));
+    g.fillStyle = lg; g.fillRect(0,0,cssW,cssH);
+    // Ondas superpuestas
+    for(let i=0;i<4;i++){
+      g.save();
+      g.globalAlpha = 0.18 + i*0.05;
+      g.fillStyle = i%2? rgbStr(adjust(base, 0.12-i*0.05)) : 'rgba(255,255,255,0.12)';
+      g.beginPath();
+      const amp = 18 + i*8; const step = 32; const y0 = cssH*(0.35 + i*0.12);
+      g.moveTo(0, y0);
+      for(let x=0;x<=cssW;x+=step){
+        const y = y0 + Math.sin((x/120) + i)*amp;
+        g.lineTo(x, y);
+      }
+      g.lineTo(cssW, cssH); g.lineTo(0, cssH); g.closePath(); g.fill();
+      g.restore();
+    }
+  }
+  else if(style === 'noise'){
+    // Degradado base
+    const lg = g.createLinearGradient(0,0, cssW, cssH);
+    lg.addColorStop(0, rgbStr(light));
+    lg.addColorStop(1, rgbStr(dark));
+    g.fillStyle = lg; g.fillRect(0,0,cssW,cssH);
+    // Ruido sutil
+    const n = noiseCanvas(160, 80); // pequeño y se escala
+    g.globalAlpha = 0.15;
+    g.drawImage(n, 0, 0, n.width, n.height, 0, 0, cssW, cssH);
+    g.globalAlpha = 1;
+    // Viñeta
+    const vg = g.createRadialGradient(cssW/2, cssH/2, cssH*0.2, cssW/2, cssH/2, cssW*0.7);
+    vg.addColorStop(0, 'rgba(0,0,0,0)');
+    vg.addColorStop(1, 'rgba(0,0,0,0.22)');
+    g.fillStyle = vg; g.fillRect(0,0,cssW,cssH);
+  }
+
+  // Instalar como imagen de fondo exacta a 1024×500 y resetear transform
+  const url = c.toDataURL('image/png');
+  const im = new Image();
+  im.onload = ()=>{ bgImg = im; bg.scale = 1; bg.x = 0; bg.y = 0; setActive('bg'); draw(); };
+  im.src = url;
+}
+
+function noiseCanvas(w,h){
+  const nc = document.createElement('canvas'); nc.width=w; nc.height=h; const nx = nc.getContext('2d');
+  const img = nx.createImageData(w,h); const data = img.data;
+  for(let i=0;i<w*h;i++){
+    const v = Math.random()*255|0; // gris aleatorio
+    const o = i*4; data[o]=v; data[o+1]=v; data[o+2]=v; data[o+3]=255;
+  }
+  nx.putImageData(img,0,0); return nc;
+}
+
+function hexToRgb(hex){
+  const h = hex.replace('#','');
+  const bigint = parseInt(h.length===3 ? h.split('').map(x=>x+x).join('') : h, 16);
+  return { r:(bigint>>16)&255, g:(bigint>>8)&255, b:bigint&255 };
+}
+function clamp(v,min,max){ return Math.max(min, Math.min(max,v)); }
+function adjust({r,g,b}, amt){ // brillo simple en HSL aproximado
+  // Pasar a HSL aproximado
+  const rn=r/255, gn=g/255, bn=b/255; const max=Math.max(rn,gn,bn), min=Math.min(rn,gn,bn); let h,s; const l=(max+min)/2;
+  if(max===min){ h=s=0; } else {
+    const d=max-min; s = l>0.5 ? d/(2-max-min) : d/(max+min);
+    switch(max){ case rn: h=(gn-bn)/d + (gn<bn?6:0); break; case gn: h=(bn-rn)/d + 2; break; default: h=(rn-gn)/d + 4; }
+    h/=6;
+  }
+  const newL = clamp(l + amt, 0, 1);
+  const {r:rr,g:rg,b:rb}=hslToRgb(h,s,newL);
+  return { r:Math.round(rr*255), g:Math.round(rg*255), b:Math.round(rb*255) };
+}
+function hslToRgb(h, s, l){
+  const hue2rgb=(p,q,t)=>{ if(t<0) t+=1; if(t>1) t-=1; if(t<1/6) return p+(q-p)*6*t; if(t<1/2) return q; if(t<2/3) return p+(q-p)*(2/3 - t)*6; return p; };
+  let r,g,b; if(s===0){ r=g=b=l; } else { const q=l<0.5 ? l*(1+s) : l + s - l*s; const p=2*l-q; r=hue2rgb(p,q,h+1/3); g=hue2rgb(p,q,h); b=hue2rgb(p,q,h-1/3); }
+  return {r,g,b};
+}
+function rgbStr({r,g,b}){ return `rgb(${r}, ${g}, ${b})`; }
 
 function exportImage(){
   const out = document.createElement('canvas'); out.width = cssW; out.height = cssH; const octx = out.getContext('2d');
