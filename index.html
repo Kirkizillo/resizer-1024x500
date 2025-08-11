@@ -57,9 +57,6 @@
       <div class="toolbar group">
         <label class="toggle"><input type="checkbox" id="toggleGuides" checked> Guías (tercios)</label>
         <label class="toggle"><input type="checkbox" id="toggleSafe" checked> Área texto (solo preview)</label>
-        <span class="muted">W</span><input id="safeW" type="number" class="sp" min="40" max="600" step="10" value="280" />
-        <span class="muted">H</span><input id="safeH" type="number" class="sp" min="30" max="300" step="5" value="80" />
-        <span class="muted">Margen</span><input id="safeM" type="number" class="sp" min="0" max="100" step="2" value="16" />
       </div>
 
       <div class="toolbar group">
@@ -90,14 +87,12 @@ canvas.style.width = cssW + 'px'; canvas.style.height = cssH + 'px';
 canvas.width = Math.round(cssW * dpr); canvas.height = Math.round(cssH * dpr);
 ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-// Estado
 let bgImg = null, logoImg = null;
 let bg = { x:0, y:0, scale:1 };
 let logo = { x:16, y:16, scale:0.3, opacity:1 };
-let active = 'bg'; // 'bg' | 'logo'
+let active = 'bg';
 let dragging = false, startX=0, startY=0;
 
-// UI
 const el = (id)=>document.getElementById(id);
 const bgInput = el('bgInput');
 const logoInput = el('logoInput');
@@ -106,11 +101,9 @@ const tabLogo = el('tabLogo');
 const which = el('which');
 const toggleGuides = el('toggleGuides');
 const toggleSafe = el('toggleSafe');
-const safeW = el('safeW');
-const safeH = el('safeH');
-const safeM = el('safeM');
 const formatSel = el('format');
 const qualityInput = el('quality');
+const downloadBtn = el('downloadBtn');
 
 function setActive(name){
   active = name; which.textContent = name === 'bg' ? 'Fondo' : 'Logo';
@@ -122,24 +115,21 @@ tabBg.onclick = ()=> setActive('bg');
 tabLogo.onclick = ()=> setActive('logo');
 
 bgInput.addEventListener('change', e=>{ const f = e.target.files?.[0]; if(!f) return; const url = URL.createObjectURL(f); const img = new Image(); img.onload=()=>{ bgImg = img; fitCover(); URL.revokeObjectURL(url); setActive('bg'); draw(); }; img.src=url; });
-logoInput.addEventListener('change', e=>{ const f = e.target.files?.[0]; if(!f) return; const url = URL.createObjectURL(f); const img = new Image(); img.onload=()=>{ logoImg = img; const targetH = cssH * 0.2; logo.scale = targetH / img.naturalHeight; logo.x = +safeM.value; logo.y = +safeM.value; URL.revokeObjectURL(url); setActive('logo'); draw(); }; img.src=url; });
+logoInput.addEventListener('change', e=>{ const f = e.target.files?.[0]; if(!f) return; const url = URL.createObjectURL(f); const img = new Image(); img.onload=()=>{ logoImg = img; const targetH = cssH * 0.2; logo.scale = targetH / img.naturalHeight; logo.x = 16; logo.y = 16; URL.revokeObjectURL(url); setActive('logo'); draw(); }; img.src=url; });
 
 function draw(){
   ctx.clearRect(0,0,cssW,cssH);
-  // FONDO
   if(bgImg){
     const iw = bgImg.naturalWidth * bg.scale; const ih = bgImg.naturalHeight * bg.scale;
     const x = (cssW - iw)/2 + bg.x; const y = (cssH - ih)/2 + bg.y;
     ctx.drawImage(bgImg, x, y, iw, ih);
   }
-  // LOGO (encima)
   if(logoImg){
     ctx.save(); ctx.globalAlpha = logo.opacity;
     const lw = logoImg.naturalWidth * logo.scale; const lh = logoImg.naturalHeight * logo.scale;
     ctx.drawImage(logoImg, logo.x, logo.y, lw, lh);
     ctx.restore();
   }
-  // Overlays (solo preview)
   if(toggleGuides.checked) drawGuides(ctx);
   if(toggleSafe.checked) drawSafeArea(ctx);
 }
@@ -157,14 +147,13 @@ function drawGuides(context){
 }
 
 function drawSafeArea(context){
-  const m = +safeM.value; const w = +safeW.value; const h = +safeH.value;
+  const m = 16, w = 280, h = 80;
   context.save();
   context.strokeStyle = getCss('--safe') || '#ffd166';
-  context.fillStyle = 'rgba(255,209,102,0.22)'; // un poco más opaco
+  context.fillStyle = 'rgba(255,209,102,0.22)';
   context.lineWidth = 2; context.setLineDash([10,6]);
   context.strokeRect(m, m, w, h);
   context.fillRect(m, m, w, h);
-  // etiqueta centrada "TAG"
   context.font = '700 22px system-ui, -apple-system, Segoe UI, Roboto';
   context.fillStyle = '#3a2a00';
   context.textAlign = 'center';
@@ -181,7 +170,7 @@ function fitCover(){
   bg.x=0; bg.y=0; draw();
 }
 function center(){ if(active==='bg'){ bg.x=0; bg.y=0; } else if(logoImg){ logo.x=(cssW - logoImg.naturalWidth*logo.scale)/2; logo.y=(cssH - logoImg.naturalHeight*logo.scale)/2; } draw(); }
-function reset(){ if(active==='bg'){ bg.scale=1; bg.x=0; bg.y=0; } else if(logoImg){ const targetH = cssH * 0.2; logo.scale = targetH / logoImg.naturalHeight; logo.x = +safeM.value; logo.y = +safeM.value; } draw(); }
+function reset(){ if(active==='bg'){ bg.scale=1; bg.x=0; bg.y=0; } else if(logoImg){ const targetH = cssH * 0.2; logo.scale = targetH / logoImg.naturalHeight; logo.x = 16; logo.y = 16; } draw(); }
 
 function zoomAt(clientX, clientY, factor){
   const rect = canvas.getBoundingClientRect();
@@ -192,14 +181,13 @@ function zoomAt(clientX, clientY, factor){
   } else if(active==='logo' && logoImg){
     const lw = logoImg.naturalWidth*logo.scale; const lh = logoImg.naturalHeight*logo.scale;
     const lx = logo.x + lw/2; const ly = logo.y + lh/2;
-    const prev = logo.scale; logo.scale *= factor; // mantener centro
+    const prev = logo.scale; logo.scale *= factor;
     const lw2 = logoImg.naturalWidth*logo.scale; const lh2 = logoImg.naturalHeight*logo.scale;
     logo.x = lx - lw2/2; logo.y = ly - lh2/2;
   }
   draw();
 }
 
-// Reescalado progresivo (para nitidez)
 function progressiveScale(imgEl, targetW, targetH){
   let ow = imgEl.naturalWidth, oh = imgEl.naturalHeight;
   let oc = document.createElement('canvas'); oc.width = ow; oc.height = oh; let octx = oc.getContext('2d');
@@ -218,13 +206,11 @@ function progressiveScale(imgEl, targetW, targetH){
 function exportImage(){
   const out = document.createElement('canvas'); out.width = cssW; out.height = cssH; const octx = out.getContext('2d');
   octx.imageSmoothingEnabled = true; octx.imageSmoothingQuality = 'high';
-  // FONDO
   if(bgImg){
     const iw = bgImg.naturalWidth*bg.scale, ih = bgImg.naturalHeight*bg.scale; const x=(cssW-iw)/2+bg.x, y=(cssH-ih)/2+bg.y;
     const sourceBg = progressiveScale(bgImg, Math.min(iw, cssW*2), Math.min(ih, cssH*2));
     octx.drawImage(sourceBg, x, y, iw, ih);
   }
-  // LOGO
   if(logoImg){
     octx.save(); octx.globalAlpha = logo.opacity;
     const lw = logoImg.naturalWidth*logo.scale, lh = logoImg.naturalHeight*logo.scale;
@@ -232,13 +218,11 @@ function exportImage(){
     octx.drawImage(sourceLogo, logo.x, logo.y, lw, lh);
     octx.restore();
   }
-  // NO exportamos guías ni área de texto
   const fmt = formatSel.value; const mime = fmt==='png'?'image/png':(fmt==='jpeg'?'image/jpeg':'image/webp');
   const q = Math.max(0.5, Math.min(1, parseFloat(qualityInput.value||'0.95')));
   out.toBlob(b=>{ const url = URL.createObjectURL(b); const a=document.createElement('a'); const ext = fmt==='jpeg'?'jpg':fmt; a.href=url; a.download=`export_1024x500.${ext}`; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url); }, mime, fmt==='png'?1:q);
 }
 
-// Interacción
 canvas.addEventListener('mousedown', e=>{ dragging=true; startX=e.clientX; startY=e.clientY; });
 window.addEventListener('mouseup', ()=> dragging=false);
 window.addEventListener('mousemove', e=>{
@@ -248,12 +232,12 @@ window.addEventListener('mousemove', e=>{
 });
 canvas.addEventListener('wheel', e=>{ e.preventDefault(); zoomAt(e.clientX, e.clientY, e.deltaY<0?1.1:0.9); }, {passive:false});
 
-toggleGuides.onchange = draw; toggleSafe.onchange = draw; safeW.onchange = draw; safeH.onchange = draw; safeM.onchange = draw;
+toggleGuides.onchange = draw; toggleSafe.onchange = draw;
 
 document.getElementById('fitCover').onclick = fitCover;
 document.getElementById('centerBtn').onclick = center;
 document.getElementById('resetBtn').onclick = reset;
-document.getElementById('downloadBtn').onclick = exportImage;
+downloadBtn.onclick = exportImage;
 
 draw();
 </script>
