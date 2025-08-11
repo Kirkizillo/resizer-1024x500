@@ -28,7 +28,8 @@
     .muted{color:var(--muted);font-size:12px;margin-top:8px;text-align:center}
     input[type="file"]{display:none}
     label.file{display:inline-flex;gap:.5rem;align-items:center;border:1px dashed #3a4b61;padding:.55rem .8rem;border-radius:.6rem;cursor:pointer;color:var(--muted)}
-    .toolbar{display:flex;gap:10px;align-items:center;justify-content:center;margin:12px 0}
+    .toolbar{display:flex;gap:10px;align-items:center;justify-content:center;margin:12px 0;flex-wrap:wrap}
+    .toggle{display:inline-flex;align-items:center;gap:6px;color:var(--muted);font-size:13px}
     kbd{background:#111827;border:1px solid #374151;border-bottom-width:3px;border-radius:6px;padding:.1rem .35rem;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;color:#d1d5db}
   </style>
 </head>
@@ -43,6 +44,7 @@
         <button id="centerBtn">Centrar</button>
         <button id="resetBtn">Reset</button>
         <button id="downloadBtn">Exportar PNG 1024×500</button>
+        <label class="toggle"><input type="checkbox" id="toggleGuides" checked> Mostrar guías (solo vista previa)</label>
       </div>
       <div class="canvas-wrap">
         <canvas id="canvas" width="1024" height="500"></canvas>
@@ -69,6 +71,7 @@ ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 let img = new Image();
 let offsetX = 0, offsetY = 0, scale = 1;
 let dragging = false, startX = 0, startY = 0;
+const guidesCheckbox = document.getElementById('toggleGuides');
 
 function draw(){
   ctx.clearRect(0,0,cssW,cssH);
@@ -79,22 +82,22 @@ function draw(){
     const y = (cssH - ih)/2 + offsetY;
     ctx.drawImage(img, x, y, iw, ih);
   }
-  drawGuides();
+  if (guidesCheckbox.checked) drawGuides(ctx);
 }
 
-function drawGuides(){
-  ctx.save();
-  ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--guide');
-  ctx.lineWidth = 1;
-  ctx.setLineDash([6, 4]);
-  // Regla de tercios vertical y horizontal
-  ctx.beginPath();
-  ctx.moveTo(cssW/3, 0); ctx.lineTo(cssW/3, cssH);
-  ctx.moveTo(2*cssW/3, 0); ctx.lineTo(2*cssW/3, cssH);
-  ctx.moveTo(0, cssH/3); ctx.lineTo(cssW, cssH/3);
-  ctx.moveTo(0, 2*cssH/3); ctx.lineTo(cssW, 2*cssH/3);
-  ctx.stroke();
-  ctx.restore();
+function drawGuides(context){
+  context.save();
+  context.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--guide');
+  context.lineWidth = 1;
+  context.setLineDash([6, 4]);
+  // Regla de tercios
+  context.beginPath();
+  context.moveTo(cssW/3, 0); context.lineTo(cssW/3, cssH);
+  context.moveTo(2*cssW/3, 0); context.lineTo(2*cssW/3, cssH);
+  context.moveTo(0, cssH/3); context.lineTo(cssW, cssH/3);
+  context.moveTo(0, 2*cssH/3); context.lineTo(cssW, 2*cssH/3);
+  context.stroke();
+  context.restore();
 }
 
 function fitCover(){
@@ -129,18 +132,7 @@ function exportPNG(){
   const x = (cssW - iw)/2 + offsetX;
   const y = (cssH - ih)/2 + offsetY;
   octx.drawImage(img, x, y, iw, ih);
-  // Dibujar guías en exportación también
-  octx.save();
-  octx.strokeStyle = '#ff4d4d';
-  octx.lineWidth = 1;
-  octx.setLineDash([6, 4]);
-  octx.beginPath();
-  octx.moveTo(cssW/3, 0); octx.lineTo(cssW/3, cssH);
-  octx.moveTo(2*cssW/3, 0); octx.lineTo(2*cssW/3, cssH);
-  octx.moveTo(0, cssH/3); octx.lineTo(cssW, cssH/3);
-  octx.moveTo(0, 2*cssH/3); octx.lineTo(cssW, 2*cssH/3);
-  octx.stroke();
-  octx.restore();
+  // Importante: NO dibujar guías en la exportación
   out.toBlob(b=>{
     const url = URL.createObjectURL(b);
     const a = document.createElement('a');
@@ -166,6 +158,8 @@ window.addEventListener('mousemove', e => {
 });
 canvas.addEventListener('wheel', e => { e.preventDefault(); zoomAt(e.clientX, e.clientY, e.deltaY < 0 ? 1.1 : 0.9); }, {passive:false});
 
+guidesCheckbox.addEventListener('change', draw);
+
 window.addEventListener('keydown', e => {
   if(e.key === '+') zoomAt(canvas.getBoundingClientRect().left + canvas.clientWidth/2, canvas.getBoundingClientRect().top + canvas.clientHeight/2, 1.1);
   if(e.key === '-') zoomAt(canvas.getBoundingClientRect().left + canvas.clientWidth/2, canvas.getBoundingClientRect().top + canvas.clientHeight/2, 0.9);
@@ -183,10 +177,6 @@ document.getElementById('resetBtn').addEventListener('click', reset);
 document.getElementById('downloadBtn').addEventListener('click', exportPNG);
 
 draw();
-</script>
-</body>
-</html>
-
 </script>
 </body>
 </html>
