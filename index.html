@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Resizer 1024×500</title>
+  <style>body{margin:0;font-family:sans-serif;background:#111;color:#fff;text-align:center}canvas{background:#222;max-width:100%;height:auto;cursor:grab}</style>
+</head>
+<body>
+  <h1>Resizer 1024×500</h1>
+  <input type="file" id="fileInput" accept="image/*">
+  <br><br>
+  <canvas id="canvas" width="1024" height="500"></canvas>
+  <br><br>
+  <button id="downloadBtn">Exportar PNG</button>
+
+<script>
+const fileInput = document.getElementById('fileInput');
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+let img = new Image();
+let offsetX = 0, offsetY = 0, scale = 1, dragging = false, startX, startY;
+
+fileInput.addEventListener('change', e => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const url = URL.createObjectURL(file);
+  img.onload = () => { offsetX = offsetY = 0; scale = 1; draw(); URL.revokeObjectURL(url); };
+  img.src = url;
+});
+
+function draw(){
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  ctx.fillStyle = '#111';
+  ctx.fillRect(0,0,canvas.width,canvas.height);
+  const iw = img.width * scale;
+  const ih = img.height * scale;
+  ctx.drawImage(img, (canvas.width - iw)/2 + offsetX, (canvas.height - ih)/2 + offsetY, iw, ih);
+}
+
+canvas.addEventListener('mousedown', e => { dragging = true; startX = e.offsetX; startY = e.offsetY; });
+canvas.addEventListener('mouseup', () => dragging = false);
+canvas.addEventListener('mouseout', () => dragging = false);
+canvas.addEventListener('mousemove', e => {
+  if (dragging){ offsetX += e.offsetX - startX; offsetY += e.offsetY - startY; startX = e.offsetX; startY = e.offsetY; draw(); }
+});
+canvas.addEventListener('wheel', e => {
+  e.preventDefault();
+  const zoom = e.deltaY < 0 ? 1.1 : 0.9;
+  scale *= zoom;
+  draw();
+});
+
+document.getElementById('downloadBtn').addEventListener('click', () => {
+  const link = document.createElement('a');
+  link.download = 'export_1024x500.png';
+  link.href = canvas.toDataURL('image/png');
+  link.click();
+});
+</script>
+</body>
+</html>
