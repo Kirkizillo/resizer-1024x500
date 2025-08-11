@@ -4,59 +4,189 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Resizer 1024×500</title>
-  <style>body{margin:0;font-family:sans-serif;background:#111;color:#fff;text-align:center}canvas{background:#222;max-width:100%;height:auto;cursor:grab}</style>
+  <style>
+    :root{ --bg:#0b0f14; --panel:#0f1720; --edge:#334155; --text:#e5eef7; --muted:#93a4b8; --guide:#ff4d4d; }
+    *{box-sizing:border-box}
+    body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 system-ui,-apple-system,Segoe UI,Roboto}
+    header{padding:12px 16px;border-bottom:1px solid #1f2937;background:linear-gradient(180deg,#0f1720,#0b0f14)}
+    h1{margin:0;font-size:16px;font-weight:600}
+    main{display:grid;place-items:center;gap:16px;padding:20px}
+    .frame{display:inline-block;padding:18px;border-radius:12px;background:var(--panel);box-shadow:0 12px 30px #00000055}
+    .canvas-wrap{position:relative;display:inline-block}
+    canvas{display:block;width:1024px;height:500px;background-image:
+      linear-gradient(45deg,#1b2430 25%,transparent 25%),
+      linear-gradient(-45deg,#1b2430 25%,transparent 25%),
+      linear-gradient(45deg,transparent 75%,#1b2430 75%),
+      linear-gradient(-45deg,transparent 75%,#1b2430 75%);
+      background-size:22px 22px; background-position:0 0,0 11px,11px -11px,-11px 0;
+      outline:2px solid var(--edge); outline-offset:8px; border-radius:6px; cursor:grab;
+    }
+    canvas:active{cursor:grabbing}
+    .controls{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-top:12px}
+    button{appearance:none;border:1px solid #253445;background:#0e1520;color:var(--text);padding:.55rem .8rem;border-radius:.6rem;cursor:pointer}
+    button:hover{border-color:#35506d;box-shadow:0 0 0 3px #1e293b66}
+    .muted{color:var(--muted);font-size:12px;margin-top:8px;text-align:center}
+    input[type="file"]{display:none}
+    label.file{display:inline-flex;gap:.5rem;align-items:center;border:1px dashed #3a4b61;padding:.55rem .8rem;border-radius:.6rem;cursor:pointer;color:var(--muted)}
+    .toolbar{display:flex;gap:10px;align-items:center;justify-content:center;margin:12px 0}
+    kbd{background:#111827;border:1px solid #374151;border-bottom-width:3px;border-radius:6px;padding:.1rem .35rem;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;color:#d1d5db}
+  </style>
 </head>
 <body>
-  <h1>Resizer 1024×500</h1>
-  <input type="file" id="fileInput" accept="image/*">
-  <br><br>
-  <canvas id="canvas" width="1024" height="500"></canvas>
-  <br><br>
-  <button id="downloadBtn">Exportar PNG</button>
+  <header><h1>Resizer 1024×500</h1></header>
+  <main>
+    <div class="frame">
+      <div class="toolbar">
+        <label class="file" for="fileInput">📁 Cargar imagen</label>
+        <input id="fileInput" type="file" accept="image/*" />
+        <button id="fitCover">Ajustar cubrir</button>
+        <button id="centerBtn">Centrar</button>
+        <button id="resetBtn">Reset</button>
+        <button id="downloadBtn">Exportar PNG 1024×500</button>
+      </div>
+      <div class="canvas-wrap">
+        <canvas id="canvas" width="1024" height="500"></canvas>
+      </div>
+      <div class="muted" id="info">Sin imagen · rueda para zoom, arrastra para mover. Atajos: <kbd>+</kbd>/<kbd>-</kbd>, flechas, <kbd>R</kbd>.</div>
+    </div>
+  </main>
 
 <script>
+const dpr = Math.max(1, window.devicePixelRatio || 1);
 const fileInput = document.getElementById('fileInput');
 const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
+ctx.imageSmoothingEnabled = true;
+ctx.imageSmoothingQuality = 'high';
+
+const cssW = 1024, cssH = 500;
+canvas.style.width = cssW + 'px';
+canvas.style.height = cssH + 'px';
+canvas.width = Math.round(cssW * dpr);
+canvas.height = Math.round(cssH * dpr);
+ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
 let img = new Image();
-let offsetX = 0, offsetY = 0, scale = 1, dragging = false, startX, startY;
+let offsetX = 0, offsetY = 0, scale = 1;
+let dragging = false, startX = 0, startY = 0;
+
+function draw(){
+  ctx.clearRect(0,0,cssW,cssH);
+  if (img && img.complete) {
+    const iw = img.naturalWidth * scale;
+    const ih = img.naturalHeight * scale;
+    const x = (cssW - iw)/2 + offsetX;
+    const y = (cssH - ih)/2 + offsetY;
+    ctx.drawImage(img, x, y, iw, ih);
+  }
+  drawGuides();
+}
+
+function drawGuides(){
+  ctx.save();
+  ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--guide');
+  ctx.lineWidth = 1;
+  ctx.setLineDash([6, 4]);
+  // Regla de tercios vertical y horizontal
+  ctx.beginPath();
+  ctx.moveTo(cssW/3, 0); ctx.lineTo(cssW/3, cssH);
+  ctx.moveTo(2*cssW/3, 0); ctx.lineTo(2*cssW/3, cssH);
+  ctx.moveTo(0, cssH/3); ctx.lineTo(cssW, cssH/3);
+  ctx.moveTo(0, 2*cssH/3); ctx.lineTo(cssW, 2*cssH/3);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function fitCover(){
+  if(!img || !img.complete) return;
+  const rFrame = cssW / cssH;
+  const rImg = img.naturalWidth / img.naturalHeight;
+  scale = (rImg > rFrame) ? (cssH / img.naturalHeight) : (cssW / img.naturalWidth);
+  offsetX = 0; offsetY = 0; draw();
+}
+
+function center(){ offsetX = 0; offsetY = 0; draw(); }
+function reset(){ scale = 1; center(); }
+
+function zoomAt(clientX, clientY, factor){
+  const rect = canvas.getBoundingClientRect();
+  const cx = (clientX - rect.left) / rect.width * cssW;
+  const cy = (clientY - rect.top) / rect.height * cssH;
+  const prevScale = scale; scale *= factor;
+  offsetX = cx - (cx - offsetX) * (scale / prevScale);
+  offsetY = cy - (cy - offsetY) * (scale / prevScale);
+  draw();
+}
+
+function exportPNG(){
+  if(!img || !img.complete) return;
+  const out = document.createElement('canvas');
+  out.width = cssW; out.height = cssH;
+  const octx = out.getContext('2d');
+  octx.imageSmoothingEnabled = true; octx.imageSmoothingQuality = 'high';
+  const iw = img.naturalWidth * scale;
+  const ih = img.naturalHeight * scale;
+  const x = (cssW - iw)/2 + offsetX;
+  const y = (cssH - ih)/2 + offsetY;
+  octx.drawImage(img, x, y, iw, ih);
+  // Dibujar guías en exportación también
+  octx.save();
+  octx.strokeStyle = '#ff4d4d';
+  octx.lineWidth = 1;
+  octx.setLineDash([6, 4]);
+  octx.beginPath();
+  octx.moveTo(cssW/3, 0); octx.lineTo(cssW/3, cssH);
+  octx.moveTo(2*cssW/3, 0); octx.lineTo(2*cssW/3, cssH);
+  octx.moveTo(0, cssH/3); octx.lineTo(cssW, cssH/3);
+  octx.moveTo(0, 2*cssH/3); octx.lineTo(cssW, 2*cssH/3);
+  octx.stroke();
+  octx.restore();
+  out.toBlob(b=>{
+    const url = URL.createObjectURL(b);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'export_1024x500.png';
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+  }, 'image/png', 1);
+}
 
 fileInput.addEventListener('change', e => {
-  const file = e.target.files[0];
-  if (!file) return;
+  const file = e.target.files && e.target.files[0]; if(!file) return;
   const url = URL.createObjectURL(file);
-  img.onload = () => { offsetX = offsetY = 0; scale = 1; draw(); URL.revokeObjectURL(url); };
+  img = new Image();
+  img.onload = () => { fitCover(); document.getElementById('info').textContent = `${img.naturalWidth}×${img.naturalHeight}px cargada · zoom con rueda, arrastra para mover.`; URL.revokeObjectURL(url); };
   img.src = url;
 });
 
-function draw(){
-  ctx.clearRect(0,0,canvas.width,canvas.height);
-  ctx.fillStyle = '#111';
-  ctx.fillRect(0,0,canvas.width,canvas.height);
-  const iw = img.width * scale;
-  const ih = img.height * scale;
-  ctx.drawImage(img, (canvas.width - iw)/2 + offsetX, (canvas.height - ih)/2 + offsetY, iw, ih);
-}
-
-canvas.addEventListener('mousedown', e => { dragging = true; startX = e.offsetX; startY = e.offsetY; });
-canvas.addEventListener('mouseup', () => dragging = false);
-canvas.addEventListener('mouseout', () => dragging = false);
-canvas.addEventListener('mousemove', e => {
-  if (dragging){ offsetX += e.offsetX - startX; offsetY += e.offsetY - startY; startX = e.offsetX; startY = e.offsetY; draw(); }
+canvas.addEventListener('mousedown', e => { dragging = true; startX = e.clientX; startY = e.clientY; });
+window.addEventListener('mouseup', () => dragging = false);
+window.addEventListener('mousemove', e => {
+  if(!dragging) return; const speed = e.shiftKey ? 0.5 : 1;
+  offsetX += (e.clientX - startX) * speed; offsetY += (e.clientY - startY) * speed; startX = e.clientX; startY = e.clientY; draw();
 });
-canvas.addEventListener('wheel', e => {
-  e.preventDefault();
-  const zoom = e.deltaY < 0 ? 1.1 : 0.9;
-  scale *= zoom;
-  draw();
+canvas.addEventListener('wheel', e => { e.preventDefault(); zoomAt(e.clientX, e.clientY, e.deltaY < 0 ? 1.1 : 0.9); }, {passive:false});
+
+window.addEventListener('keydown', e => {
+  if(e.key === '+') zoomAt(canvas.getBoundingClientRect().left + canvas.clientWidth/2, canvas.getBoundingClientRect().top + canvas.clientHeight/2, 1.1);
+  if(e.key === '-') zoomAt(canvas.getBoundingClientRect().left + canvas.clientWidth/2, canvas.getBoundingClientRect().top + canvas.clientHeight/2, 0.9);
+  const step = e.shiftKey ? 2 : 10;
+  if(e.key === 'ArrowLeft') { offsetX -= step; draw(); }
+  if(e.key === 'ArrowRight'){ offsetX += step; draw(); }
+  if(e.key === 'ArrowUp')   { offsetY -= step; draw(); }
+  if(e.key === 'ArrowDown') { offsetY += step; draw(); }
+  if(e.key.toLowerCase() === 'r') reset();
 });
 
-document.getElementById('downloadBtn').addEventListener('click', () => {
-  const link = document.createElement('a');
-  link.download = 'export_1024x500.png';
-  link.href = canvas.toDataURL('image/png');
-  link.click();
-});
+document.getElementById('fitCover').addEventListener('click', fitCover);
+document.getElementById('centerBtn').addEventListener('click', center);
+document.getElementById('resetBtn').addEventListener('click', reset);
+document.getElementById('downloadBtn').addEventListener('click', exportPNG);
+
+draw();
+</script>
+</body>
+</html>
+
 </script>
 </body>
 </html>
