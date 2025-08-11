@@ -121,9 +121,8 @@ function setActive(name){
 tabBg.onclick = ()=> setActive('bg');
 tabLogo.onclick = ()=> setActive('logo');
 
-bgInput.addEventListener('change', e=>{ const f = e.target.files?.[0]; if(!f) return; const url = URL.createObjectURL(f); const img = new Image(); img.onload=()=>{ bgImg = img; fitCover(); URL.revokeObjectURL(url); draw(); }; img.src=url; });
-logoInput.addEventListener('change', e=>{ const f = e.target.files?.[0]; if(!f) return; const url = URL.createObjectURL(f); const img = new Image(); img.onload=()=>{ logoImg = img; // tamaño inicial ~20% del alto del lienzo
-  const targetH = cssH * 0.2; logo.scale = targetH / img.naturalHeight; logo.x = +safeM.value; logo.y = +safeM.value; URL.revokeObjectURL(url); draw(); }; img.src=url; });
+bgInput.addEventListener('change', e=>{ const f = e.target.files?.[0]; if(!f) return; const url = URL.createObjectURL(f); const img = new Image(); img.onload=()=>{ bgImg = img; fitCover(); URL.revokeObjectURL(url); setActive('bg'); draw(); }; img.src=url; });
+logoInput.addEventListener('change', e=>{ const f = e.target.files?.[0]; if(!f) return; const url = URL.createObjectURL(f); const img = new Image(); img.onload=()=>{ logoImg = img; const targetH = cssH * 0.2; logo.scale = targetH / img.naturalHeight; logo.x = +safeM.value; logo.y = +safeM.value; URL.revokeObjectURL(url); setActive('logo'); draw(); }; img.src=url; });
 
 function draw(){
   ctx.clearRect(0,0,cssW,cssH);
@@ -161,14 +160,16 @@ function drawSafeArea(context){
   const m = +safeM.value; const w = +safeW.value; const h = +safeH.value;
   context.save();
   context.strokeStyle = getCss('--safe') || '#ffd166';
-  context.fillStyle = 'rgba(255,209,102,0.08)';
+  context.fillStyle = 'rgba(255,209,102,0.22)'; // un poco más opaco
   context.lineWidth = 2; context.setLineDash([10,6]);
   context.strokeRect(m, m, w, h);
   context.fillRect(m, m, w, h);
-  // etiqueta
-  context.font = '12px system-ui, -apple-system, Segoe UI, Roboto';
-  context.fillStyle = '#ffe08a';
-  context.fillText('Área de texto', m+6, m+16);
+  // etiqueta centrada "TAG"
+  context.font = '700 22px system-ui, -apple-system, Segoe UI, Roboto';
+  context.fillStyle = '#3a2a00';
+  context.textAlign = 'center';
+  context.textBaseline = 'middle';
+  context.fillText('TAG', m + w/2, m + h/2);
   context.restore();
 }
 
@@ -179,7 +180,7 @@ function fitCover(){
   bg.scale = (rImg>rFrame) ? (cssH/bgImg.naturalHeight) : (cssW/bgImg.naturalWidth);
   bg.x=0; bg.y=0; draw();
 }
-function center(){ if(active==='bg'){ bg.x=0; bg.y=0; } else { logo.x=(cssW - logoImg.naturalWidth*logo.scale)/2; logo.y=(cssH - logoImg.naturalHeight*logo.scale)/2; } draw(); }
+function center(){ if(active==='bg'){ bg.x=0; bg.y=0; } else if(logoImg){ logo.x=(cssW - logoImg.naturalWidth*logo.scale)/2; logo.y=(cssH - logoImg.naturalHeight*logo.scale)/2; } draw(); }
 function reset(){ if(active==='bg'){ bg.scale=1; bg.x=0; bg.y=0; } else if(logoImg){ const targetH = cssH * 0.2; logo.scale = targetH / logoImg.naturalHeight; logo.x = +safeM.value; logo.y = +safeM.value; } draw(); }
 
 function zoomAt(clientX, clientY, factor){
@@ -198,7 +199,7 @@ function zoomAt(clientX, clientY, factor){
   draw();
 }
 
-// Reescalado progresivo (para nitidez) - devuelve un canvas fuente reducido en pasos
+// Reescalado progresivo (para nitidez)
 function progressiveScale(imgEl, targetW, targetH){
   let ow = imgEl.naturalWidth, oh = imgEl.naturalHeight;
   let oc = document.createElement('canvas'); oc.width = ow; oc.height = oh; let octx = oc.getContext('2d');
@@ -231,7 +232,7 @@ function exportImage(){
     octx.drawImage(sourceLogo, logo.x, logo.y, lw, lh);
     octx.restore();
   }
-  // NOTA: guías y área de texto NO se exportan
+  // NO exportamos guías ni área de texto
   const fmt = formatSel.value; const mime = fmt==='png'?'image/png':(fmt==='jpeg'?'image/jpeg':'image/webp');
   const q = Math.max(0.5, Math.min(1, parseFloat(qualityInput.value||'0.95')));
   out.toBlob(b=>{ const url = URL.createObjectURL(b); const a=document.createElement('a'); const ext = fmt==='jpeg'?'jpg':fmt; a.href=url; a.download=`export_1024x500.${ext}`; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url); }, mime, fmt==='png'?1:q);
