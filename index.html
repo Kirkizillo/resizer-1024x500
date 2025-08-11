@@ -23,14 +23,17 @@
     }
     canvas:active{cursor:grabbing}
     .controls{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-top:12px}
-    button{appearance:none;border:1px solid #253445;background:#0e1520;color:var(--text);padding:.55rem .8rem;border-radius:.6rem;cursor:pointer}
-    button:hover{border-color:#35506d;box-shadow:0 0 0 3px #1e293b66}
+    button, select, input[type="number"]{appearance:none;border:1px solid #253445;background:#0e1520;color:var(--text);padding:.55rem .8rem;border-radius:.6rem;cursor:pointer}
+    button:hover, select:hover, input[type="number"]:hover{border-color:#35506d;box-shadow:0 0 0 3px #1e293b66}
     .muted{color:var(--muted);font-size:12px;margin-top:8px;text-align:center}
     input[type="file"]{display:none}
     label.file{display:inline-flex;gap:.5rem;align-items:center;border:1px dashed #3a4b61;padding:.55rem .8rem;border-radius:.6rem;cursor:pointer;color:var(--muted)}
     .toolbar{display:flex;gap:10px;align-items:center;justify-content:center;margin:12px 0;flex-wrap:wrap}
     .toggle{display:inline-flex;align-items:center;gap:6px;color:var(--muted);font-size:13px}
     kbd{background:#111827;border:1px solid #374151;border-bottom-width:3px;border-radius:6px;padding:.1rem .35rem;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;color:#d1d5db}
+    .qwrap{display:flex;align-items:center;gap:8px}
+    .qwrap[hidden]{display:none}
+    .sp{width:64px}
   </style>
 </head>
 <body>
@@ -43,8 +46,19 @@
         <button id="fitCover">Ajustar cubrir</button>
         <button id="centerBtn">Centrar</button>
         <button id="resetBtn">Reset</button>
-        <button id="downloadBtn">Exportar PNG 1024×500</button>
         <label class="toggle"><input type="checkbox" id="toggleGuides" checked> Mostrar guías (solo vista previa)</label>
+      </div>
+      <div class="toolbar">
+        <select id="format">
+          <option value="png">PNG (sin pérdida)</option>
+          <option value="jpeg" selected>JPEG (con pérdida)</option>
+          <option value="webp">WEBP</option>
+        </select>
+        <div id="qGroup" class="qwrap">
+          <span class="muted">Calidad</span>
+          <input id="quality" type="number" class="sp" min="0.5" max="1" step="0.05" value="0.95" />
+        </div>
+        <button id="downloadBtn">Exportar 1024×500</button>
       </div>
       <div class="canvas-wrap">
         <canvas id="canvas" width="1024" height="500"></canvas>
@@ -72,6 +86,13 @@ let img = new Image();
 let offsetX = 0, offsetY = 0, scale = 1;
 let dragging = false, startX = 0, startY = 0;
 const guidesCheckbox = document.getElementById('toggleGuides');
+const formatSel = document.getElementById('format');
+const qualityInput = document.getElementById('quality');
+const qGroup = document.getElementById('qGroup');
+
+formatSel.addEventListener('change', ()=>{
+  qGroup.hidden = (formatSel.value === 'png');
+});
 
 function draw(){
   ctx.clearRect(0,0,cssW,cssH);
@@ -87,7 +108,7 @@ function draw(){
 
 function drawGuides(context){
   context.save();
-  context.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--guide');
+  context.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--guide') || '#ff4d4d';
   context.lineWidth = 1;
   context.setLineDash([6, 4]);
   // Regla de tercios
@@ -121,25 +142,67 @@ function zoomAt(clientX, clientY, factor){
   draw();
 }
 
-function exportPNG(){
+// Reescalado progresivo para mayor nitidez en el export
+function progressiveScale(imgEl, targetW, targetH){
+  // Escala objetivo según el estado actual (iw/ih)
+  let iw = Math.max(1, Math.round(imgEl.naturalWidth * scale));
+  let ih = Math.max(1, Math.round(imgEl.naturalHeight * scale));
+  // Si ya estamos cerca del tamaño final, no hace falta multietapa
+  if (iw <= targetW*1.2 && ih <= targetH*1.2) {
+    return imgEl; // lo dibujamos directo en el canvas final
+  }
+  // Canvas temporal
+  let oc = document.createElement('canvas');
+  oc.width = Math.min(iw, imgEl.naturalWidth); // arrancamos en el natural o escala pedida
+  oc.height = Math.min(ih, imgEl.naturalHeight);
+  let octx = oc.getContext('2d');
+  octx.imageSmoothingEnabled = true; octx.imageSmoothingQuality = 'high';
+  // Dibujo inicial: natural → oc
+  octx.drawImage(imgEl, 0, 0, oc.width, oc.height);
+  // Ir reduciendo a mitades hasta aproximarnos al objetivo
+  while (oc.width * 0.5 > targetW || oc.height * 0.5 > targetH){
+    const oc2 = document.createElement('canvas');
+    oc2.width = Math.max(targetW, Math.floor(oc.width * 0.5));
+    oc2.height = Math.max(targetH, Math.floor(oc.height * 0.5));
+    const octx2 = oc2.getContext('2d');
+    octx2.imageSmoothingEnabled = true; octx2.imageSmoothingQuality = 'high';
+    octx2.drawImage(oc, 0, 0, oc.width, oc.height, 0, 0, oc2.width, oc2.height);
+    oc = oc2; octx = octx2;
+  }
+  return oc;
+}
+
+function exportImage(){
   if(!img || !img.complete) return;
   const out = document.createElement('canvas');
   out.width = cssW; out.height = cssH;
   const octx = out.getContext('2d');
   octx.imageSmoothingEnabled = true; octx.imageSmoothingQuality = 'high';
+
+  // Tamaños y posición finales según el encuadre actual
   const iw = img.naturalWidth * scale;
   const ih = img.naturalHeight * scale;
   const x = (cssW - iw)/2 + offsetX;
   const y = (cssH - ih)/2 + offsetY;
-  octx.drawImage(img, x, y, iw, ih);
-  // Importante: NO dibujar guías en la exportación
+
+  // Crear versión reescalada progresiva del bitmap para ganar nitidez
+  const source = progressiveScale(img, Math.min(iw, cssW*2), Math.min(ih, cssH*2));
+  // Nota: "source" puede ser la propia imagen o un canvas temporal reescalado
+  octx.drawImage(source, x, y, iw, ih);
+
+  // Exportar según formato
+  const fmt = formatSel.value; // 'png' | 'jpeg' | 'webp'
+  const mime = fmt === 'png' ? 'image/png' : (fmt === 'jpeg' ? 'image/jpeg' : 'image/webp');
+  const q = Math.max(0.5, Math.min(1, parseFloat(qualityInput.value || '0.95')));
+
   out.toBlob(b=>{
     const url = URL.createObjectURL(b);
     const a = document.createElement('a');
-    a.href = url; a.download = 'export_1024x500.png';
+    const ext = fmt === 'jpeg' ? 'jpg' : fmt;
+    a.href = url; a.download = `export_1024x500.${ext}`;
     document.body.appendChild(a); a.click(); a.remove();
     URL.revokeObjectURL(url);
-  }, 'image/png', 1);
+  }, mime, fmt === 'png' ? 1 : q);
 }
 
 fileInput.addEventListener('change', e => {
@@ -174,7 +237,7 @@ window.addEventListener('keydown', e => {
 document.getElementById('fitCover').addEventListener('click', fitCover);
 document.getElementById('centerBtn').addEventListener('click', center);
 document.getElementById('resetBtn').addEventListener('click', reset);
-document.getElementById('downloadBtn').addEventListener('click', exportPNG);
+document.getElementById('downloadBtn').addEventListener('click', exportImage);
 
 draw();
 </script>
