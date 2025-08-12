@@ -89,7 +89,7 @@
       <div class="canvas-wrap">
         <canvas id="canvas" width="1024" height="500" title="Arrastra imágenes o URLs aquí"></canvas>
       </div>
-      <div class="muted" id="info">Capa activa: <strong id="which">Fondo</strong> · rueda para zoom, arrastra para mover. Atajos: <kbd>+</kbd>/<kbd>-</kbd>, flechas, <kbd>R</kbd>. También puedes **arrastrar y soltar** imágenes o **URLs** sobre el lienzo.</div>
+      <div class="muted" id="info">Capa activa: <strong id="which">Fondo</strong> · rueda para zoom, arrastra para mover. Atajos: <kbd>+</kbd>/<kbd>-</kbd>, flechas, <kbd>R</kbd>, <kbd>Supr</kbd> (borrar imagen de la capa activa), <kbd>Ctrl/Cmd + E</kbd> (exportar). También puedes <strong>arrastrar y soltar</strong> imágenes o <strong>URLs</strong> sobre el lienzo.</div>
     </div>
   </main>
 
@@ -416,6 +416,37 @@ function loadImageFromURL(url, layer){
 canvas.addEventListener('mousedown', e=>{ dragging=true; startX=e.clientX; startY=e.clientY; });
 window.addEventListener('mouseup', ()=> dragging=false);
 window.addEventListener('mousemove', e=>{ if(!dragging) return; const speed = e.shiftKey?0.5:1; const dx=(e.clientX-startX)*speed; const dy=(e.clientY-startY)*speed; startX=e.clientX; startY=e.clientY; if(active==='bg'){ bg.x += dx; bg.y += dy; } else { logo.x += dx; logo.y += dy; } draw(); });
+canvas.addEventListener('wheel', e=>{ e.preventDefault(); zoomAt(e.clientX, e.clientY, e.deltaY<0?1.1:0.9); }, {passive:false});
+
+toggleGuides.onchange = draw; toggleSafe.onchange = draw;
+
+document.getElementById('fitCover').onclick = fitCover;
+document.getElementById('centerBtn').onclick = center;
+document.getElementById('resetBtn').onclick = reset;
+downloadBtn.onclick = exportImage;
+
+// Atajos de teclado adicionales
+window.addEventListener('keydown', (e)=>{
+  const key = e.key.toLowerCase();
+  // Borrar imagen de la capa activa: Supr/Backspace
+  if (key === 'delete' || key === 'backspace') {
+    // Evita borrar texto en inputs cuando están enfocados
+    const tag = (document.activeElement && document.activeElement.tagName || '').toLowerCase();
+    if (tag === 'input' || tag === 'textarea') return;
+    e.preventDefault();
+    if (active === 'bg' && bgImg) { bgImg = null; draw(); }
+    else if (active === 'logo' && logoImg) { logoImg = null; draw(); }
+  }
+  // Exportar: Ctrl/Cmd + E
+  if ((e.ctrlKey || e.metaKey) && key === 'e') {
+    e.preventDefault();
+    exportImage();
+  }
+});
+
+// Dibujo inicial
+setSeed(Date.now());
+draw(); });
 canvas.addEventListener('wheel', e=>{ e.preventDefault(); zoomAt(e.clientX, e.clientY, e.deltaY<0?1.1:0.9); }, {passive:false});
 
 toggleGuides.onchange = draw; toggleSafe.onchange = draw;
