@@ -243,6 +243,31 @@ function clamp(v,min,max){ return Math.max(min, Math.min(max,v)); }
 function adjust({r,g,b}, amt){ const rn=r/255, gn=g/255, bn=b/255; const maxV=Math.max(rn,gn,bn), minV=Math.min(rn,gn,bn); let h,s; const l=(maxV+minV)/2; if(maxV===minV){ h=s=0; } else { const d=maxV-minV; s = l>0.5 ? d/(2-maxV-minV) : d/(maxV+minV); switch(maxV){ case rn: h=(gn-bn)/d + (gn<bn?6:0); break; case gn: h=(bn-rn)/d + 2; break; default: h=(rn-gn)/d + 4; } h/=6; } const newL = clamp(l + amt, 0, 1); const {r:rr,g:rg,b:rb}=hslToRgb(h,s,newL); return { r:Math.round(rr*255), g:Math.round(rg*255), b:Math.round(rb*255) }; }
 function hslToRgb(h, s, l){ const hue2rgb=(p,q,t)=>{ if(t<0) t+=1; if(t>1) t-=1; if(t<1/6) return p+(q-p)*6*t; if(t<1/2) return q; if(t<2/3) return p+(q-p)*(2/3 - t)*6; return p; }; let r,g,b; if(s===0){ r=g=b=l; } else { const q=l<0.5 ? l*(1+s) : l + s - l*s; const p=2*l-q; r=hue2rgb(p,q,h+1/3); g=hue2rgb(p,q,h); b=hue2rgb(p,q,h-1/3); } return {r,g,b}; }
 function rgbStr({r,g,b}){ return `rgb(${r}, ${g}, ${b})`; }
+function averageColorHex(image){
+  // reduce a 50x50 y calcula la media RGB
+  const w = 50, h = 50;
+  const c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  const g = c.getContext('2d');
+  g.drawImage(image, 0, 0, w, h);
+  const { data } = g.getImageData(0, 0, w, h);
+  let r = 0, gsum = 0, b = 0, count = 0;
+  for(let i=0; i<data.length; i+=4){
+    r    += data[i];
+    gsum += data[i+1];
+    b    += data[i+2];
+    count++;
+  }
+  r = Math.round(r / count);
+  gsum = Math.round(gsum / count);
+  b = Math.round(b / count);
+  return rgbToHex(r, gsum, b);
+}
+
+function rgbToHex(r,g,b){
+  const toHex = v => v.toString(16).padStart(2,'0');
+  return '#' + toHex(r) + toHex(g) + toHex(b);
+}
 
 // Toast
 const toastEl = document.getElementById('toast');
@@ -262,9 +287,66 @@ canvas.addEventListener('drop', async (e)=>{
 
 function isProbablyImageURL(u){ return /\.(png|jpe?g|webp|gif|bmp|svg)(\?.*)?$/i.test(u); }
 
-function loadImageFromFile(file, layer){ const url = URL.createObjectURL(file); const img = new Image(); img.onload = ()=>{ if(layer==='logo'){ logoImg = img; const targetH = cssH * 0.2; logo.scale = targetH / img.naturalHeight; logo.x = 16; logo.y = 16; setActive('logo'); } else { bgImg = img; fitCover(); setActive('bg'); } URL.revokeObjectURL(url); draw(); }; img.src = url; }
+function loadImageFromFile(file, layer){
+  const url = URL.createObjectURL(file);
+  const img = new Image();
+  img.onload = ()=>{
+    if(layer==='logo'){
+      logoImg = img;
+      // Tamaño original + centrado
+      logo.scale = 1;
+      logo.x = (cssW - img.naturalWidth) / 2;
+      logo.y = (cssH - img.naturalHeight) / 2;
+      setActive('logo');
 
-function loadImageFromURL(url, layer){ return new Promise((resolve,reject)=>{ const img = new Image(); if(/^https?:/i.test(url)) img.crossOrigin = 'anonymous'; img.onload = ()=>{ if(layer==='logo'){ logoImg = img; const targetH = cssH * 0.2; logo.scale = targetH / img.naturalHeight; logo.x = 16; logo.y = 16; setActive('logo'); } else { bgImg = img; fitCover(); setActive('bg'); } draw(); resolve(); }; img.onerror = ()=>{ alert('No se pudo cargar la imagen desde la URL. Puede requerir permisos CORS.'); reject(); }; img.src = url; }); }
+      // Ajustar color base del generador al promedio del logo
+      try {
+        bgColor.value = averageColorHex(img);
+        showToast && showToast('Color base ajustado al logo');
+      } catch(_) { /* ignorar si el canvas queda tainted */ }
+    } else {
+      bgImg = img;
+      fitCover();
+      setActive('bg');
+    }
+    URL.revokeObjectURL(url);
+    draw();
+    pushHistory && pushHistory();
+  };
+  img.src = url;
+}
+
+function loadImageFromURL(url, layer){
+  return new Promise((resolve,reject)=>{
+    const img = new Image();
+    if(/^https?:/i.test(url)) img.crossOrigin = 'anonymous'; // para intentar evitar canvas tainted
+    img.onload = ()=>{
+      if(layer==='logo'){
+        logoImg = img;
+        // Tamaño original + centrado
+        logo.scale = 1;
+        logo.x = (cssW - img.naturalWidth) / 2;
+        logo.y = (cssH - img.naturalHeight) / 2;
+        setActive('logo');
+
+        // Ajustar color base del generador al promedio del logo
+        try {
+          bgColor.value = averageColorHex(img);
+          showToast && showToast('Color base ajustado al logo');
+        } catch(_) { /* ignorar si el canvas queda tainted */ }
+      } else {
+        bgImg = img;
+        fitCover();
+        setActive('bg');
+      }
+      draw();
+      pushHistory && pushHistory();
+      resolve();
+    };
+    img.onerror = ()=>{ alert('No se pudo cargar la imagen desde la URL. Puede requerir permisos CORS.'); reject(); };
+    img.src = url;
+  });
+}
 
 function loadImageFromSrc(src, layer){ return new Promise((resolve)=>{ const img = new Image(); if(/^https?:/i.test(src)) img.crossOrigin = 'anonymous'; img.onload = ()=>{ if(layer==='logo'){ logoImg = img; } else { bgImg = img; } resolve(); }; img.src = src; }); }
 
