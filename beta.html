@@ -104,6 +104,7 @@ let bg = { x:0, y:0, scale:1 };
 let logo = { x:16, y:16, scale:0.3, opacity:1 };
 let active = 'bg';
 let dragging = false, startX=0, startY=0;
+let rafPending = false; // requestAnimationFrame throttle flag
 
 const el = (id)=>document.getElementById(id);
 const bgInput = el('bgInput');
@@ -120,6 +121,26 @@ const genBgBtn = el('genBgBtn');
 const bgColor = el('bgColor');
 const bgStyle = el('bgStyle');
 
+// Validate quality input
+qualityInput.addEventListener('input', ()=>{
+  let val = parseFloat(qualityInput.value);
+  if(isNaN(val) || val < 0.5 || val > 1){
+    qualityInput.style.borderColor = '#ef4444'; // Red border for invalid
+    alert('⚠️ La calidad debe estar entre 0.5 y 1');
+  } else {
+    qualityInput.style.borderColor = ''; // Reset to default
+  }
+});
+
+// Validate on blur and clamp value
+qualityInput.addEventListener('blur', ()=>{
+  let val = parseFloat(qualityInput.value);
+  if(isNaN(val)) val = 0.95;
+  val = Math.max(0.5, Math.min(1, val));
+  qualityInput.value = val;
+  qualityInput.style.borderColor = '';
+});
+
 function setActive(name){
   active = name; which.textContent = name === 'bg' ? 'Fondo' : 'Logo';
   tabBg.classList.toggle('active', name==='bg');
@@ -129,8 +150,32 @@ function setActive(name){
 tabBg.onclick = ()=> setActive('bg');
 tabLogo.onclick = ()=> setActive('logo');
 
-bgInput.addEventListener('change', e=>{ const f = e.target.files?.[0]; if(!f) return; const url = URL.createObjectURL(f); const img = new Image(); img.onload=()=>{ bgImg = img; fitCover(); URL.revokeObjectURL(url); setActive('bg'); draw(); }; img.src=url; });
-logoInput.addEventListener('change', e=>{ const f = e.target.files?.[0]; if(!f) return; const url = URL.createObjectURL(f); const img = new Image(); img.onload=()=>{ logoImg = img; const targetH = cssH * 0.2; logo.scale = targetH / img.naturalHeight; logo.x = 16; logo.y = 16; URL.revokeObjectURL(url); setActive('logo'); draw(); }; img.src=url; });
+bgInput.addEventListener('change', e=>{
+  const f = e.target.files?.[0];
+  if(!f) return;
+  if(!f.type.startsWith('image/')){
+    alert('❌ Error: El archivo no es una imagen válida');
+    return;
+  }
+  const url = URL.createObjectURL(f);
+  const img = new Image();
+  img.onload=()=>{ bgImg = img; fitCover(); URL.revokeObjectURL(url); setActive('bg'); draw(); };
+  img.onerror=()=>{ URL.revokeObjectURL(url); alert('❌ Error al cargar el archivo de imagen'); };
+  img.src=url;
+});
+logoInput.addEventListener('change', e=>{
+  const f = e.target.files?.[0];
+  if(!f) return;
+  if(!f.type.startsWith('image/')){
+    alert('❌ Error: El archivo no es una imagen válida');
+    return;
+  }
+  const url = URL.createObjectURL(f);
+  const img = new Image();
+  img.onload=()=>{ logoImg = img; const targetH = cssH * 0.2; logo.scale = targetH / img.naturalHeight; logo.x = 16; logo.y = 16; URL.revokeObjectURL(url); setActive('logo'); draw(); };
+  img.onerror=()=>{ URL.revokeObjectURL(url); alert('❌ Error al cargar el archivo de imagen'); };
+  img.src=url;
+});
 
 genBgBtn.addEventListener('click', ()=>{
   generateAbstract(bgStyle.value, bgColor.value);
@@ -239,7 +284,18 @@ function exportImage(){
   }
   const fmt = formatSel.value; const mime = fmt==='png'?'image/png':(fmt==='jpeg'?'image/jpeg':'image/webp');
   const q = Math.max(0.5, Math.min(1, parseFloat(qualityInput.value||'0.95')));
-  out.toBlob(b=>{ const url = URL.createObjectURL(b); const a=document.createElement('a'); const ext = fmt==='jpeg'?'jpg':fmt; a.href=url; a.download=`export_1024x500.${ext}`; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url); }, mime, fmt==='png'?1:q);
+  out.toBlob(b=>{
+    if(!b){
+      alert('❌ No se pudo exportar. Si usaste una imagen por URL, puede que no permita exportar por CORS. Prueba a descargarla y cargarla como archivo.');
+      return;
+    }
+    const url = URL.createObjectURL(b);
+    const a=document.createElement('a');
+    const ext = fmt==='jpeg'?'jpg':fmt;
+    a.href=url; a.download=`export_1024x500.${ext}`;
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+  }, mime, fmt==='png'?1:q);
 }
 
 // === FONDOS ABSTRACTOS ===
@@ -346,9 +402,18 @@ function rgbStr({r,g,b}){ return `rgb(${r}, ${g}, ${b})`; }
 canvas.addEventListener('mousedown', e=>{ dragging=true; startX=e.clientX; startY=e.clientY; });
 window.addEventListener('mouseup', ()=> dragging=false);
 window.addEventListener('mousemove', e=>{
-  if(!dragging) return; const speed = e.shiftKey?0.5:1; const dx=(e.clientX-startX)*speed; const dy=(e.clientY-startY)*speed; startX=e.clientX; startY=e.clientY;
-  if(active==='bg'){ bg.x += dx; bg.y += dy; } else { logo.x += dx; logo.y += dy; }
-  draw();
+  if(!dragging) return;
+  const speed = e.shiftKey?0.5:1;
+  const dx=(e.clientX-startX)*speed;
+  const dy=(e.clientY-startY)*speed;
+  startX=e.clientX; startY=e.clientY;
+  if(active==='bg'){ bg.x += dx; bg.y += dy; }
+  else { logo.x += dx; logo.y += dy; }
+  // Throttle redraws with requestAnimationFrame
+  if(!rafPending){
+    rafPending = true;
+    requestAnimationFrame(()=>{ draw(); rafPending = false; });
+  }
 });
 canvas.addEventListener('wheel', e=>{ e.preventDefault(); zoomAt(e.clientX, e.clientY, e.deltaY<0?1.1:0.9); }, {passive:false});
 
