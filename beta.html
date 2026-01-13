@@ -343,26 +343,6 @@ function hslToRgb(h, s, l){
 }
 function rgbStr({r,g,b}){ return `rgb(${r}, ${g}, ${b})`; }
 
-function exportImage(){
-  const out = document.createElement('canvas'); out.width = cssW; out.height = cssH; const octx = out.getContext('2d');
-  octx.imageSmoothingEnabled = true; octx.imageSmoothingQuality = 'high';
-  if(bgImg){
-    const iw = bgImg.naturalWidth*bg.scale, ih = bgImg.naturalHeight*bg.scale; const x=(cssW-iw)/2+bg.x, y=(cssH-ih)/2+bg.y;
-    const sourceBg = progressiveScale(bgImg, Math.min(iw, cssW*2), Math.min(ih, cssH*2));
-    octx.drawImage(sourceBg, x, y, iw, ih);
-  }
-  if(logoImg){
-    octx.save(); octx.globalAlpha = logo.opacity;
-    const lw = logoImg.naturalWidth*logo.scale, lh = logoImg.naturalHeight*logo.scale;
-    const sourceLogo = progressiveScale(logoImg, Math.min(lw, cssW), Math.min(lh, cssH));
-    octx.drawImage(sourceLogo, logo.x, logo.y, lw, lh);
-    octx.restore();
-  }
-  const fmt = formatSel.value; const mime = fmt==='png'?'image/png':(fmt==='jpeg'?'image/jpeg':'image/webp');
-  const q = Math.max(0.5, Math.min(1, parseFloat(qualityInput.value||'0.95')));
-  out.toBlob(b=>{ const url = URL.createObjectURL(b); const a=document.createElement('a'); const ext = fmt==='jpeg'?'jpg':fmt; a.href=url; a.download=`export_1024x500.${ext}`; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url); }, mime, fmt==='png'?1:q);
-}
-
 canvas.addEventListener('mousedown', e=>{ dragging=true; startX=e.clientX; startY=e.clientY; });
 window.addEventListener('mouseup', ()=> dragging=false);
 window.addEventListener('mousemove', e=>{
