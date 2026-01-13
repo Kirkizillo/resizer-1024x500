@@ -225,10 +225,46 @@ newBtn.addEventListener('click', ()=>{
 
 function draw(){
   ctx.clearRect(0,0,cssW,cssH);
+
+  // Draw canvas boundary frame (always visible to show uncovered areas)
+  drawCanvasBoundary(ctx);
+
   if(bgImg){ const iw = bgImg.naturalWidth * bg.scale; const ih = bgImg.naturalHeight * bg.scale; const x = (cssW - iw)/2 + bg.x; const y = (cssH - ih)/2 + bg.y; ctx.drawImage(bgImg, x, y, iw, ih); }
   if(logoImg){ ctx.save(); ctx.globalAlpha = logo.opacity; const lw = logoImg.naturalWidth * logo.scale; const lh = logoImg.naturalHeight * logo.scale; ctx.drawImage(logoImg, logo.x, logo.y, lw, lh); ctx.restore(); }
   if(toggleGuides.checked) drawGuides(ctx);
   if(toggleSafe.checked) drawSafeArea(ctx);
+}
+
+function drawCanvasBoundary(context){
+  context.save();
+  // Draw a prominent border around canvas edges
+  context.strokeStyle = '#3b82f6'; // Blue border
+  context.lineWidth = 3;
+  context.setLineDash([]);
+  context.strokeRect(1.5, 1.5, cssW-3, cssH-3);
+
+  // Draw corner markers for extra visibility
+  const cornerSize = 20;
+  context.strokeStyle = '#3b82f6';
+  context.lineWidth = 3;
+  // Top-left
+  context.beginPath();
+  context.moveTo(0, cornerSize); context.lineTo(0, 0); context.lineTo(cornerSize, 0);
+  context.stroke();
+  // Top-right
+  context.beginPath();
+  context.moveTo(cssW-cornerSize, 0); context.lineTo(cssW, 0); context.lineTo(cssW, cornerSize);
+  context.stroke();
+  // Bottom-right
+  context.beginPath();
+  context.moveTo(cssW, cssH-cornerSize); context.lineTo(cssW, cssH); context.lineTo(cssW-cornerSize, cssH);
+  context.stroke();
+  // Bottom-left
+  context.beginPath();
+  context.moveTo(cornerSize, cssH); context.lineTo(0, cssH); context.lineTo(0, cssH-cornerSize);
+  context.stroke();
+
+  context.restore();
 }
 
 function drawGuides(context){ context.save(); context.strokeStyle = getCss('--guide') || '#ff4d4d'; context.lineWidth = 1; context.setLineDash([6,4]); context.beginPath(); context.moveTo(cssW/3,0); context.lineTo(cssW/3,cssH); context.moveTo(2*cssW/3,0); context.lineTo(2*cssW/3,cssH); context.moveTo(0,cssH/3); context.lineTo(cssW,cssH/3); context.moveTo(0,2*cssH/3); context.lineTo(cssW,2*cssH/3); context.stroke(); context.restore(); }
