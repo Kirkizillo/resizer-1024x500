@@ -239,8 +239,8 @@ newBtn.addEventListener('click', ()=>{
 function draw(){
   ctx.clearRect(0,0,cssW,cssH);
 
-  // Draw canvas boundary frame (always visible to show uncovered areas)
-  drawCanvasBoundary(ctx);
+  // Draw canvas boundary frame (only when background image exists)
+  if(bgImg) drawCanvasBoundary(ctx);
 
   if(bgImg){ const iw = bgImg.naturalWidth * bg.scale; const ih = bgImg.naturalHeight * bg.scale; const x = (cssW - iw)/2 + bg.x; const y = (cssH - ih)/2 + bg.y; ctx.drawImage(bgImg, x, y, iw, ih); }
   if(logoImg){ ctx.save(); ctx.globalAlpha = logo.opacity; const lw = logoImg.naturalWidth * logo.scale; const lh = logoImg.naturalHeight * logo.scale; ctx.drawImage(logoImg, logo.x, logo.y, lw, lh); ctx.restore(); }
