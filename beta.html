@@ -77,9 +77,17 @@
         <select id="bgStyle">
           <option value="soft">Degradado suave</option>
           <option value="waves">Ondas</option>
-          <option value="noise">Ruido suave</option>
+          <option value="lowpoly">Low-poly</option>
+          <option value="radial">Radial burst</option>
+          <option value="stripes">Franjas diagonales</option>
+          <option value="circles">Círculos</option>
+          <option value="geometric">Geométrico</option>
+          <option value="mesh">Malla gradiente</option>
+          <option value="dots">Puntos</option>
+          <option value="noise">Ruido texturizado</option>
         </select>
         <button id="genBgBtn">Generar fondo</button>
+        <button id="varyBtn" title="Variar (semilla aleatoria)">Variar 🎲</button>
       </div>
 
       <div class="canvas-wrap">
@@ -106,6 +114,14 @@ let active = 'bg';
 let dragging = false, startX=0, startY=0;
 let rafPending = false; // requestAnimationFrame throttle flag
 
+// PRNG con semilla (mulberry32)
+let seed = Date.now() >>> 0; let rng = mulberry32(seed);
+function mulberry32(a){ return function(){ var t = a += 0x6D2B79F5; t = Math.imul(t ^ t >>> 15, t | 1); t ^= t + Math.imul(t ^ t >>> 7, t | 61); return ((t ^ t >>> 14) >>> 0) / 4294967296; } }
+function setSeed(s){ seed = (s>>>0); rng = mulberry32(seed); }
+function rnd(){ return rng(); }
+function rint(min,max){ return Math.floor(min + rnd()*(max-min+1)); }
+function rfloat(min,max){ return min + rnd()*(min===max?0:(max-min)); }
+
 const el = (id)=>document.getElementById(id);
 const bgInput = el('bgInput');
 const logoInput = el('logoInput');
@@ -118,6 +134,7 @@ const formatSel = el('format');
 const qualityInput = el('quality');
 const downloadBtn = el('downloadBtn');
 const genBgBtn = el('genBgBtn');
+const varyBtn = el('varyBtn');
 const bgColor = el('bgColor');
 const bgStyle = el('bgStyle');
 
@@ -179,6 +196,17 @@ logoInput.addEventListener('change', e=>{
 
 genBgBtn.addEventListener('click', ()=>{
   generateAbstract(bgStyle.value, bgColor.value);
+});
+
+varyBtn.addEventListener('click', ()=>{
+  setSeed(Math.floor(Math.random()*1e9));
+  // Vary color slightly for more dramatic changes
+  const currentColor = hexToRgb(bgColor.value);
+  const h = rgbToHue(currentColor);
+  const newH = (h + rfloat(-30, 30) + 360) % 360; // Shift hue by up to ±30 degrees
+  const newColor = hueToHex(newH);
+  bgColor.value = newColor;
+  generateAbstract(bgStyle.value, newColor);
 });
 
 function draw(){
@@ -334,71 +362,19 @@ function exportImage(){
   }, mime, fmt==='png'?1:q);
 }
 
-// === FONDOS ABSTRACTOS ===
-function generateAbstract(style, hex){
-  const c = document.createElement('canvas'); c.width = cssW; c.height = cssH; const g = c.getContext('2d');
-  g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'high';
-  const base = hexToRgb(hex);
-  const light = adjust(base, 0.18); // más claro
-  const dark  = adjust(base, -0.22); // más oscuro
-
-  if(style === 'soft'){
-    // Degradado diagonal + radial tenue
-    const lg = g.createLinearGradient(0,0, cssW, cssH);
-    lg.addColorStop(0, rgbStr(light));
-    lg.addColorStop(1, rgbStr(dark));
-    g.fillStyle = lg; g.fillRect(0,0,cssW,cssH);
-    const rg = g.createRadialGradient(cssW*0.7, cssH*0.3, 50, cssW*0.7, cssH*0.3, Math.max(cssW,cssH));
-    rg.addColorStop(0, 'rgba(255,255,255,0.15)');
-    rg.addColorStop(1, 'rgba(255,255,255,0)');
-    g.fillStyle = rg; g.fillRect(0,0,cssW,cssH);
-  }
-  else if(style === 'waves'){
-    // Fondo base
-    const lg = g.createLinearGradient(0,0, 0, cssH);
-    lg.addColorStop(0, rgbStr(light));
-    lg.addColorStop(1, rgbStr(dark));
-    g.fillStyle = lg; g.fillRect(0,0,cssW,cssH);
-    // Ondas superpuestas
-    for(let i=0;i<4;i++){
-      g.save();
-      g.globalAlpha = 0.18 + i*0.05;
-      g.fillStyle = i%2? rgbStr(adjust(base, 0.12-i*0.05)) : 'rgba(255,255,255,0.12)';
-      g.beginPath();
-      const amp = 18 + i*8; const step = 32; const y0 = cssH*(0.35 + i*0.12);
-      g.moveTo(0, y0);
-      for(let x=0;x<=cssW;x+=step){
-        const y = y0 + Math.sin((x/120) + i)*amp;
-        g.lineTo(x, y);
-      }
-      g.lineTo(cssW, cssH); g.lineTo(0, cssH); g.closePath(); g.fill();
-      g.restore();
-    }
-  }
-  else if(style === 'noise'){
-    // Degradado base
-    const lg = g.createLinearGradient(0,0, cssW, cssH);
-    lg.addColorStop(0, rgbStr(light));
-    lg.addColorStop(1, rgbStr(dark));
-    g.fillStyle = lg; g.fillRect(0,0,cssW,cssH);
-    // Ruido sutil
-    const n = noiseCanvas(160, 80); // pequeño y se escala
-    g.globalAlpha = 0.15;
-    g.drawImage(n, 0, 0, n.width, n.height, 0, 0, cssW, cssH);
-    g.globalAlpha = 1;
-    // Viñeta
-    const vg = g.createRadialGradient(cssW/2, cssH/2, cssH*0.2, cssW/2, cssH/2, cssW*0.7);
-    vg.addColorStop(0, 'rgba(0,0,0,0)');
-    vg.addColorStop(1, 'rgba(0,0,0,0.22)');
-    g.fillStyle = vg; g.fillRect(0,0,cssW,cssH);
-  }
-
-  // Instalar como imagen de fondo exacta a 1024×500 y resetear transform
-  const url = c.toDataURL('image/png');
-  const im = new Image();
-  im.onload = ()=>{ bgImg = im; bg.scale = 1; bg.x = 0; bg.y = 0; setActive('bg'); draw(); };
-  im.src = url;
-}
+// === FONDOS ABSTRACTOS (10 estilos + semilla) ===
+function generateAbstract(style, hex){ const c = document.createElement('canvas'); c.width = cssW; c.height = cssH; const g = c.getContext('2d'); g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'high'; const base = hexToRgb(hex); const light = adjust(base, 0.18); const dark = adjust(base, -0.22);
+  if(style === 'soft'){ const lg = g.createLinearGradient(0,0, cssW, cssH); lg.addColorStop(0, rgbStr(light)); lg.addColorStop(1, rgbStr(dark)); g.fillStyle = lg; g.fillRect(0,0,cssW,cssH); const rg = g.createRadialGradient(cssW*rfloat(0.6,0.8), cssH*rfloat(0.2,0.4), 50, cssW*0.7, cssH*0.3, Math.max(cssW,cssH)); rg.addColorStop(0, 'rgba(255,255,255,0.15)'); rg.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = rg; g.fillRect(0,0,cssW,cssH); }
+  else if(style === 'waves'){ const lg = g.createLinearGradient(0,0, 0, cssH); lg.addColorStop(0, rgbStr(light)); lg.addColorStop(1, rgbStr(dark)); g.fillStyle = lg; g.fillRect(0,0,cssW,cssH); const layers = rint(3,5); for(let i=0;i<layers;i++){ g.save(); g.globalAlpha = 0.15 + i*0.07; g.fillStyle = i%2? rgbStr(adjust(base, 0.1-i*0.04)) : 'rgba(255,255,255,0.12)'; g.beginPath(); const amp = rfloat(14,28) + i*8; const step = 28; const y0 = cssH*(0.30 + i*0.14); g.moveTo(0, y0); const freq = rfloat(0.008,0.015); const phase = rfloat(0, Math.PI*2); for(let x=0;x<=cssW;x+=step){ const y = y0 + Math.sin(x*freq + phase)*amp; g.lineTo(x, y); } g.lineTo(cssW, cssH); g.lineTo(0, cssH); g.closePath(); g.fill(); g.restore(); } }
+  else if(style === 'lowpoly'){ const lg = g.createLinearGradient(0,0, cssW, cssH); lg.addColorStop(0, rgbStr(light)); lg.addColorStop(1, rgbStr(dark)); g.fillStyle = lg; g.fillRect(0,0,cssW,cssH); const cols = 20, rows = 10; const jx = 18, jy = 14; const alpha = 0.9; const delta = 0.22; const pts = []; for(let y=0;y<=rows;y++){ const row=[]; for(let x=0;x<=cols;x++){ const px = (x/cols)*cssW + rfloat(-jx, jx); const py = (y/rows)*cssH + rfloat(-jy, jy); row.push({x:px, y:py}); } pts.push(row); } for(let y=0;y<rows;y++){ for(let x=0;x<cols;x++){ const p00=pts[y][x], p10=pts[y][x+1], p01=pts[y+1][x], p11=pts[y+1][x+1]; g.save(); g.globalAlpha = alpha; g.beginPath(); g.moveTo(p00.x,p00.y); g.lineTo(p10.x,p10.y); g.lineTo(p11.x,p11.y); g.closePath(); let c1 = adjust(base, rfloat(-delta, delta)); g.fillStyle = `rgb(${c1.r},${c1.g},${c1.b})`; g.fill(); g.beginPath(); g.moveTo(p00.x,p00.y); g.lineTo(p11.x,p11.y); g.lineTo(p01.x,p01.y); g.closePath(); let c2 = adjust(base, rfloat(-delta, delta)); g.fillStyle = `rgb(${c2.r},${c2.g},${c2.b})`; g.fill(); g.restore(); } } const vg = g.createRadialGradient(cssW/2, cssH/2, cssH*0.2, cssW/2, cssH/2, cssW*0.8); vg.addColorStop(0,'rgba(0,0,0,0)'); vg.addColorStop(1,'rgba(0,0,0,0.15)'); g.fillStyle=vg; g.fillRect(0,0,cssW,cssH); }
+  else if(style === 'radial'){ const lg = g.createLinearGradient(0,0, cssW, cssH); lg.addColorStop(0, rgbStr(adjust(base, 0.12))); lg.addColorStop(1, rgbStr(adjust(base, -0.18))); g.fillStyle = lg; g.fillRect(0,0,cssW,cssH); const rays = rint(28, 56); const cx = cssW/2, cy = cssH/2; for(let i=0;i<rays;i++){ const a0 = rfloat(0, Math.PI*2); const w = rfloat(0.02, 0.09); const a1 = a0 + w; g.save(); g.beginPath(); g.moveTo(cx, cy); g.arc(cx, cy, Math.max(cssW,cssH), a0, a1); g.closePath(); g.fillStyle = `rgba(${base.r},${base.g},${base.b},${rfloat(0.04,0.12)})`; g.fill(); g.restore(); } }
+  else if(style === 'stripes'){ const lg = g.createLinearGradient(0,0, cssW, cssH); lg.addColorStop(0, rgbStr(light)); lg.addColorStop(1, rgbStr(dark)); g.fillStyle = lg; g.fillRect(0,0,cssW,cssH); const angle = rfloat(25*Math.PI/180, 40*Math.PI/180); g.save(); g.translate(cssW/2, cssH/2); g.rotate(angle); g.translate(-cssW/2, -cssH/2); const stripeH = rfloat(18, 44); let y = -cssH; const stripes = Math.ceil((cssH*3)/stripeH); for(let i=0;i<stripes;i++){ const adj = adjust(base, (i%2?0.12:-0.10)); g.fillStyle = `rgba(${adj.r},${adj.g},${adj.b},${rfloat(0.08,0.18)})`; g.fillRect(-cssW, y, cssW*3, stripeH); y += stripeH*1.6; } g.restore(); }
+  else if(style === 'circles'){ const lg = g.createLinearGradient(0,0, cssW, cssH); lg.addColorStop(0, rgbStr(light)); lg.addColorStop(1, rgbStr(dark)); g.fillStyle = lg; g.fillRect(0,0,cssW,cssH); const count = rint(15, 25); for(let i=0;i<count;i++){ const x = rfloat(0, cssW); const y = rfloat(0, cssH); const r = rfloat(20, 120); const col = adjust(base, rfloat(-0.2, 0.2)); g.save(); g.globalAlpha = rfloat(0.08, 0.18); g.fillStyle = rgbStr(col); g.beginPath(); g.arc(x, y, r, 0, Math.PI*2); g.fill(); g.restore(); } }
+  else if(style === 'geometric'){ const lg = g.createLinearGradient(0,0, cssW, cssH); lg.addColorStop(0, rgbStr(light)); lg.addColorStop(1, rgbStr(dark)); g.fillStyle = lg; g.fillRect(0,0,cssW,cssH); const shapes = rint(12, 20); for(let i=0;i<shapes;i++){ const x = rfloat(0, cssW); const y = rfloat(0, cssH); const size = rfloat(40, 150); const sides = rint(3, 6); const col = adjust(base, rfloat(-0.18, 0.18)); g.save(); g.globalAlpha = rfloat(0.1, 0.2); g.fillStyle = rgbStr(col); g.translate(x, y); g.rotate(rfloat(0, Math.PI*2)); g.beginPath(); for(let j=0;j<=sides;j++){ const a = (j/sides) * Math.PI * 2; g.lineTo(Math.cos(a)*size, Math.sin(a)*size); } g.closePath(); g.fill(); g.restore(); } }
+  else if(style === 'mesh'){ const cols = 8, rows = 4; const pts = []; for(let y=0;y<=rows;y++){ const row=[]; for(let x=0;x<=cols;x++){ row.push({ x:(x/cols)*cssW + rfloat(-40,40), y:(y/rows)*cssH + rfloat(-30,30), c:adjust(base, rfloat(-0.2,0.2)) }); } pts.push(row); } for(let y=0;y<rows;y++){ for(let x=0;x<cols;x++){ const p00=pts[y][x], p10=pts[y][x+1], p01=pts[y+1][x], p11=pts[y+1][x+1]; const grad = g.createLinearGradient(p00.x, p00.y, p11.x, p11.y); grad.addColorStop(0, rgbStr(p00.c)); grad.addColorStop(1, rgbStr(p11.c)); g.fillStyle = grad; g.beginPath(); g.moveTo(p00.x, p00.y); g.lineTo(p10.x, p10.y); g.lineTo(p11.x, p11.y); g.lineTo(p01.x, p01.y); g.closePath(); g.fill(); } } }
+  else if(style === 'dots'){ const lg = g.createLinearGradient(0,0, cssW, cssH); lg.addColorStop(0, rgbStr(light)); lg.addColorStop(1, rgbStr(dark)); g.fillStyle = lg; g.fillRect(0,0,cssW,cssH); const count = rint(80, 150); for(let i=0;i<count;i++){ const x = rfloat(0, cssW); const y = rfloat(0, cssH); const r = rfloat(3, 15); const col = adjust(base, rfloat(-0.15, 0.15)); g.save(); g.globalAlpha = rfloat(0.2, 0.4); g.fillStyle = rgbStr(col); g.beginPath(); g.arc(x, y, r, 0, Math.PI*2); g.fill(); g.restore(); } }
+  else if(style === 'noise'){ const lg = g.createLinearGradient(0,0, cssW, cssH); lg.addColorStop(0, rgbStr(light)); lg.addColorStop(1, rgbStr(dark)); g.fillStyle = lg; g.fillRect(0,0,cssW,cssH); const temp = document.createElement('canvas'); temp.width = 150; temp.height = 75; const tctx = temp.getContext('2d'); const imgData = tctx.createImageData(temp.width, temp.height); for(let i=0;i<imgData.data.length;i+=4){ const bright = Math.random()*255; imgData.data[i] = imgData.data[i+1] = imgData.data[i+2] = bright; imgData.data[i+3] = 255; } tctx.putImageData(imgData, 0, 0); g.save(); g.globalAlpha = 0.12; g.drawImage(temp, 0, 0, cssW, cssH); g.restore(); const overlay = g.createRadialGradient(cssW/2, cssH/2, 0, cssW/2, cssH/2, Math.max(cssW,cssH)*0.7); overlay.addColorStop(0, `rgba(${base.r},${base.g},${base.b},0.2)`); overlay.addColorStop(1, `rgba(${base.r},${base.g},${base.b},0)`); g.fillStyle = overlay; g.fillRect(0,0,cssW,cssH); }
+  const url = c.toDataURL('image/png'); const im = new Image(); im.onload = ()=>{ bgImg = im; bg.scale = 1; bg.x = 0; bg.y = 0; setActive('bg'); draw(); }; im.src = url; }
 
 function noiseCanvas(w,h){
   const nc = document.createElement('canvas'); nc.width=w; nc.height=h; const nx = nc.getContext('2d');
@@ -434,6 +410,9 @@ function hslToRgb(h, s, l){
   return {r,g,b};
 }
 function rgbStr({r,g,b}){ return `rgb(${r}, ${g}, ${b})`; }
+function rgbToHex(r,g,b){ const toHex = v => v.toString(16).padStart(2,'0'); return '#' + toHex(r) + toHex(g) + toHex(b); }
+function rgbToHue({r,g,b}){ const rn=r/255, gn=g/255, bn=b/255; const max=Math.max(rn,gn,bn), min=Math.min(rn,gn,bn); if(max===min) return 0; const d=max-min; let h; switch(max){ case rn: h=((gn-bn)/d + (gn<bn?6:0))/6; break; case gn: h=((bn-rn)/d + 2)/6; break; default: h=((rn-gn)/d + 4)/6; } return h*360; }
+function hueToHex(hue){ const h=hue/360; const r=hslToRgb(h,0.7,0.55).r; const g=hslToRgb(h,0.7,0.55).g; const b=hslToRgb(h,0.7,0.55).b; return rgbToHex(Math.round(r*255), Math.round(g*255), Math.round(b*255)); }
 
 canvas.addEventListener('mousedown', e=>{ dragging=true; startX=e.clientX; startY=e.clientY; });
 window.addEventListener('mouseup', ()=> dragging=false);
